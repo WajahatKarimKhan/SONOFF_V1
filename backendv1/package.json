@@ -1,0 +1,19 @@
+{
+  "name": "ewelink-backend",
+  "version": "1.0.0",
+  "description": "Backend server for eWeLink React App",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@koa/cors": "^5.0.0",
+    "ewelink-api-next": "^1.0.4",
+    "koa": "^2.14.2",
+    "koa-bodyparser": "^4.4.1",
+    "koa-router": "^12.0.0",
+    "koa-static": "^5.0.0"
+  }
+}

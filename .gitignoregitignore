@@ -1,0 +1,8 @@
+Ignore Node.js dependency folders
+node_modules/
+
+Ignore build output folder from React
+/frontendv1/client/build
+
+Ignore OS-specific files
+.DS_Store
