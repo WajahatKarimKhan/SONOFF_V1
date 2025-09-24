@@ -1,20 +1,20 @@
-require('dotenv').config(); // Load variables from .env file at the very top
+//require('dotenv').config(); // Load variables from .env file if it exists (for local testing)
 const Koa = require('koa');
 const Router = require('koa-router');
 const bodyParser = require('koa-bodyparser');
 const cors = require('@koa/cors');
 const eWeLink = require('ewelink-api-next').default;
 const { appId, appSecret } = require('./config');
-const { sendAlertEmail } = require('./emailService'); // Import the REAL email service
+const { sendAlertEmail } = require('./emailService');
 
 const app = new Koa();
 const router = new Router();
 const port = process.env.PORT || 8000;
 
 // --- Production URLs & Config ---
+// This is the ONLY origin allowed to connect to this backend.
 const allowedOrigins = [
     'https://aedesign-sonoffs-app.onrender.com',
-    //'http://localhost:3000'
 ];
 const frontendUrl = 'https://aedesign-sonoffs-app.onrender.com';
 const backendUrl = 'https://aedesign-sonoff-backend.onrender.com';
@@ -30,6 +30,7 @@ const corsOptions = {
     origin: (ctx) => {
         const origin = ctx.request.header.origin;
         if (allowedOrigins.includes(origin)) return origin;
+        // Block requests from any other origin
         return false;
     }
 };
