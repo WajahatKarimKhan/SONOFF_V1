@@ -14,7 +14,7 @@ const port = process.env.PORT || 8000;
 // --- Production URLs & Config ---
 const allowedOrigins = [
     'https://aedesign-sonoffs-app.onrender.com',
-    'http://localhost:3000'
+    //'http://localhost:3000'
 ];
 const frontendUrl = 'https://aedesign-sonoffs-app.onrender.com';
 const backendUrl = 'https://aedesign-sonoff-backend.onrender.com';
