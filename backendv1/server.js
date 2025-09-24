@@ -159,4 +159,3 @@ app.listen(port, () => {
   console.log(`Backend server running on port ${port}`);
   verifyConnection(); // Verify email connection on server startup
 });
-
