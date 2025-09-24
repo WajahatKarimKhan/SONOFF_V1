@@ -1,11 +1,11 @@
-//require('dotenv').config(); // Load variables from .env file if it exists (for local testing)
+require('dotenv').config(); // Load variables from .env file if it exists (for local testing)
 const Koa = require('koa');
 const Router = require('koa-router');
 const bodyParser = require('koa-bodyparser');
 const cors = require('@koa/cors');
 const eWeLink = require('ewelink-api-next').default;
 const { appId, appSecret } = require('./config');
-const { sendAlertEmail } = require('./emailService');
+const { sendAlertEmail, verifyConnection } = require('./emailService'); // Import verifyConnection
 
 const app = new Koa();
 const router = new Router();
@@ -157,5 +157,6 @@ app.use(router.routes()).use(router.allowedMethods());
 
 app.listen(port, () => {
   console.log(`Backend server running on port ${port}`);
+  verifyConnection(); // Verify email connection on server startup
 });
 
