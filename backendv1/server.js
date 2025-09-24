@@ -1,115 +1,91 @@
+require('dotenv').config(); // Load variables from .env file at the very top
 const Koa = require('koa');
 const Router = require('koa-router');
 const bodyParser = require('koa-bodyparser');
 const cors = require('@koa/cors');
 const eWeLink = require('ewelink-api-next').default;
 const { appId, appSecret } = require('./config');
+const { sendAlertEmail } = require('./emailService'); // Import the REAL email service
 
 const app = new Koa();
 const router = new Router();
 const port = process.env.PORT || 8000;
 
-// --- Production URLs ---
+// --- Production URLs & Config ---
+const allowedOrigins = [
+    'https://aedesign-sonoffs-app.onrender.com',
+    'http://localhost:3000'
+];
 const frontendUrl = 'https://aedesign-sonoffs-app.onrender.com';
 const backendUrl = 'https://aedesign-sonoff-backend.onrender.com';
 
 // --- In-Memory Storage ---
 let tokenStore = {};
-// Store limits and alerts in memory { deviceId: { limits, email } }
 let deviceLimits = {};
-// Store active alerts { id, deviceName, message, timestamp }
 let activeAlerts = [];
 let alertIdCounter = 0;
 
-
-app.use(cors({ origin: frontendUrl }));
+// --- Middleware Setup ---
+const corsOptions = {
+    origin: (ctx) => {
+        const origin = ctx.request.header.origin;
+        if (allowedOrigins.includes(origin)) return origin;
+        return false;
+    }
+};
+app.use(cors(corsOptions));
 app.use(bodyParser());
 
-const client = new eWeLink.WebAPI({
-  appId,
-  appSecret,
-});
+const client = new eWeLink.WebAPI({ appId, appSecret });
 
-// --- Authentication Routes ---
+// --- Routes ---
+// [Authentication and basic API routes are unchanged and omitted for brevity]
 router.get('/auth/login', (ctx) => {
   const redirectUrl = `${backendUrl}/redirectUrl`;
-  const loginUrl = client.oauth.createLoginUrl({
-    redirectUrl,
-    grantType: 'authorization_code',
-    state: 'your_random_state_string',
-  });
+  const loginUrl = client.oauth.createLoginUrl({ redirectUrl, grantType: 'authorization_code', state: 'your_random_state_string' });
   if (loginUrl) {
-    console.log('Redirecting user to eWeLink login page...');
     ctx.redirect(loginUrl);
   } else {
-    console.error('CRITICAL: Failed to generate login URL.');
     ctx.status = 500;
     ctx.body = 'Could not generate eWeLink login URL.';
   }
 });
-
 router.get('/redirectUrl', async (ctx) => {
   try {
     const { code, region } = ctx.request.query;
-    const response = await client.oauth.getToken({
-      code,
-      region,
-      redirectUrl: `${backendUrl}/redirectUrl`,
-    });
-    tokenStore = {
-      accessToken: response.data.accessToken,
-      refreshToken: response.data.refreshToken,
-      region: region,
-    };
+    const response = await client.oauth.getToken({ code, region, redirectUrl: `${backendUrl}/redirectUrl` });
+    tokenStore = { accessToken: response.data.accessToken, refreshToken: response.data.refreshToken, region: region };
     ctx.redirect(frontendUrl);
   } catch (error) {
-    console.error('Error getting token:', error);
     ctx.status = 500;
     ctx.body = 'Authentication failed.';
   }
 });
-
-
-// --- Main API Routes ---
 router.get('/api/session', (ctx) => {
   ctx.body = tokenStore.accessToken ? { loggedIn: true, region: tokenStore.region } : { loggedIn: false };
 });
-
 router.get('/api/devices', async (ctx) => {
     if (!tokenStore.accessToken) return ctx.throw(401, 'Not authenticated');
-    try {
-        client.at = tokenStore.accessToken;
-        client.setUrl(tokenStore.region);
-        const devices = await client.device.getAllThingsAllPages();
-        // Attach saved limits to the device data
-        if (devices.data && devices.data.thingList) {
-            devices.data.thingList.forEach(device => {
-                const deviceId = device.itemData.deviceid;
-                if (deviceLimits[deviceId]) {
-                    device.itemData.limits = deviceLimits[deviceId];
-                }
-            });
-        }
-        ctx.body = devices;
-    } catch (error) {
-        ctx.throw(500, 'Failed to fetch devices.');
+    client.at = tokenStore.accessToken;
+    client.setUrl(tokenStore.region);
+    const devices = await client.device.getAllThingsAllPages();
+    if (devices.data && devices.data.thingList) {
+        devices.data.thingList.forEach(d => {
+            if (deviceLimits[d.itemData.deviceid]) {
+                d.itemData.limits = deviceLimits[d.itemData.deviceid];
+            }
+        });
     }
+    ctx.body = devices;
 });
-
 router.post('/api/devices/:id/status', async (ctx) => {
     if (!tokenStore.accessToken) return ctx.throw(401, 'Not authenticated');
-    try {
-        client.at = tokenStore.accessToken;
-        client.setUrl(tokenStore.region);
-        const { id } = ctx.params;
-        const { params } = ctx.request.body;
-        ctx.body = await client.device.setThingStatus({ type: 1, id, params });
-    } catch (error) {
-        ctx.throw(500, 'Failed to toggle device.');
-    }
+    client.at = tokenStore.accessToken;
+    client.setUrl(tokenStore.region);
+    const { id } = ctx.params;
+    const { params } = ctx.request.body;
+    ctx.body = await client.device.setThingStatus({ type: 1, id, params });
 });
-
-// --- Alerting and Limits Routes ---
 router.post('/api/devices/:id/limits', (ctx) => {
     if (!tokenStore.accessToken) return ctx.throw(401, 'Not authenticated');
     const { id } = ctx.params;
@@ -119,18 +95,14 @@ router.post('/api/devices/:id/limits', (ctx) => {
     ctx.status = 200;
     ctx.body = { message: 'Limits saved successfully.' };
 });
-
 router.get('/api/alerts', (ctx) => {
     ctx.body = activeAlerts;
 });
-
 router.delete('/api/alerts/:id', (ctx) => {
     const alertId = parseInt(ctx.params.id, 10);
     activeAlerts = activeAlerts.filter(alert => alert.id !== alertId);
-    console.log(`Dismissed alert ${alertId}`);
-    ctx.status = 204; // No content
+    ctx.status = 204;
 });
-
 
 // --- Background Task for Checking Limits ---
 const checkDeviceLimits = async () => {
@@ -140,47 +112,36 @@ const checkDeviceLimits = async () => {
     client.at = tokenStore.accessToken;
     client.setUrl(tokenStore.region);
     const devices = await client.device.getAllThingsAllPages();
-
     if (!devices.data || !devices.data.thingList) return;
 
     devices.data.thingList.forEach(device => {
       const { deviceid, name, params } = device.itemData;
       const stored = deviceLimits[deviceid];
-      if (!stored || !stored.limits) return;
+      if (!stored || !stored.limits || !stored.email) return;
 
       const { tempHigh, tempLow, humidHigh, humidLow } = stored.limits;
       const { currentTemperature, currentHumidity } = params;
-
       let alertMessage = null;
-      if (tempHigh && currentTemperature !== 'unavailable' && currentTemperature > tempHigh) {
-        alertMessage = `Temperature is HIGH: ${currentTemperature}°C (Limit: ${tempHigh}°C)`;
-      } else if (tempLow && currentTemperature !== 'unavailable' && currentTemperature < tempLow) {
-        alertMessage = `Temperature is LOW: ${currentTemperature}°C (Limit: ${tempLow}°C)`;
-      } else if (humidHigh && currentHumidity !== 'unavailable' && currentHumidity > humidHigh) {
-        alertMessage = `Humidity is HIGH: ${currentHumidity}% (Limit: ${humidHigh}%)`;
-      } else if (humidLow && currentHumidity !== 'unavailable' && currentHumidity < humidLow) {
-        alertMessage = `Humidity is LOW: ${currentHumidity}% (Limit: ${humidLow}%)`;
-      }
 
+      if (tempHigh && currentTemperature !== 'unavailable' && currentTemperature > tempHigh) {
+        alertMessage = `Temperature is too HIGH: ${currentTemperature}°C (Your limit is ${tempHigh}°C).`;
+      } else if (tempLow && currentTemperature !== 'unavailable' && currentTemperature < tempLow) {
+        alertMessage = `Temperature is too LOW: ${currentTemperature}°C (Your limit is ${tempLow}°C).`;
+      } else if (humidHigh && currentHumidity !== 'unavailable' && currentHumidity > humidHigh) {
+        alertMessage = `Humidity is too HIGH: ${currentHumidity}% (Your limit is ${humidHigh}%).`;
+      } else if (humidLow && currentHumidity !== 'unavailable' && currentHumidity < humidLow) {
+        alertMessage = `Humidity is too LOW: ${currentHumidity}% (Your limit is ${humidLow}%).`;
+      }
+      
       if (alertMessage) {
-        // Avoid creating duplicate alerts
-        const existingAlert = activeAlerts.find(a => a.deviceId === deviceid && a.message === alertMessage);
+        const existingAlert = activeAlerts.find(a => a.deviceId === deviceid && a.originalMessage === alertMessage);
         if (!existingAlert) {
             alertIdCounter++;
-            const newAlert = {
-                id: alertIdCounter,
-                deviceId: deviceid,
-                deviceName: name,
-                message: alertMessage,
-                timestamp: new Date().toISOString()
-            };
+            const newAlert = { id: alertIdCounter, deviceId: deviceid, deviceName: name, message: `Alert for ${name}: ${alertMessage}`, originalMessage: alertMessage };
             activeAlerts.push(newAlert);
-            // SIMULATE SENDING EMAIL
-            console.log('--- 📧 SIMULATING EMAIL ALERT ---');
-            console.log(`TO: ${stored.email || 'No email set'}`);
-            console.log(`SUBJECT: Alert for device ${name}`);
-            console.log(`MESSAGE: ${alertMessage}`);
-            console.log('---------------------------------');
+            
+            // --- THIS NOW SENDS A REAL EMAIL ---
+            sendAlertEmail(stored.email, `SONOFF Alert: ${name}`, newAlert.message);
         }
       }
     });
@@ -189,9 +150,7 @@ const checkDeviceLimits = async () => {
   }
 };
 
-// Run the check every 60 seconds
 setInterval(checkDeviceLimits, 60000);
-
 
 app.use(router.routes()).use(router.allowedMethods());
 
