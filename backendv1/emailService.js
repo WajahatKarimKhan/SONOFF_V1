@@ -1,5 +1,5 @@
 const nodemailer = require('nodemailer');
-
+//updated
 // Configure the email transporter using credentials from the .env file
 const transporter = nodemailer.createTransport({
   service: 'gmail', // Or another service like 'outlook'
