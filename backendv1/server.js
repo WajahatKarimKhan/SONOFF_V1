@@ -5,15 +5,20 @@ const bodyParser = require('koa-bodyparser');
 const cors = require('@koa/cors');
 const eWeLink = require('ewelink-api-next').default;
 const { appId, appSecret } = require('./config');
-const { sendAlertEmail } = require('./emailService'); // Import the email service
+const { sendAlertEmail } = require('./emailService');
 
 const app = new Koa();
 const router = new Router();
 const port = process.env.PORT || 8000;
 
 // --- Production URLs & Config ---
+const allowedOrigins = [
+    'https://aedesign-sonoffs-app.onrender.com',
+    'http://localhost:3000' // Keep for local testing
+];
 const frontendUrl = 'https://aedesign-sonoffs-app.onrender.com';
 const backendUrl = 'https://aedesign-sonoff-backend.onrender.com';
+
 
 // --- In-Memory Storage ---
 let tokenStore = {};
@@ -21,7 +26,19 @@ let deviceLimits = {};
 let activeAlerts = [];
 let alertIdCounter = 0;
 
-app.use(cors({ origin: [frontendUrl, 'http://localhost:3000'] })); // Allow both local and prod frontend
+// --- Robust CORS Setup ---
+const corsOptions = {
+    origin: function (ctx) {
+        const origin = ctx.request.header.origin;
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            return origin;
+        }
+        // If the origin is not allowed, don't return anything.
+        // The middleware will then block the request.
+        return false;
+    }
+};
+app.use(cors(corsOptions));
 app.use(bodyParser());
 
 const client = new eWeLink.WebAPI({ appId, appSecret });
@@ -56,7 +73,6 @@ router.get('/redirectUrl', async (ctx) => {
       refreshToken: response.data.refreshToken,
       region: region,
     };
-    // Redirect to frontend after login
     ctx.redirect(frontendUrl);
   } catch (error) {
     console.error('Error getting token:', error);
@@ -128,22 +144,17 @@ router.delete('/api/alerts/:id', (ctx) => {
 // --- Background Task for Checking Limits ---
 const checkDeviceLimits = async () => {
   if (!tokenStore.accessToken) return;
-
   try {
     client.at = tokenStore.accessToken;
     client.setUrl(tokenStore.region);
     const devices = await client.device.getAllThingsAllPages();
-
     if (!devices.data || !devices.data.thingList) return;
-
     devices.data.thingList.forEach(device => {
       const { deviceid, name, params } = device.itemData;
       const stored = deviceLimits[deviceid];
-      if (!stored || !stored.limits || !stored.email) return; // Only check if email is set
-
+      if (!stored || !stored.limits || !stored.email) return;
       const { tempHigh, tempLow, humidHigh, humidLow } = stored.limits;
       const { currentTemperature, currentHumidity } = params;
-
       let alertMessage = null;
       if (tempHigh && currentTemperature !== 'unavailable' && currentTemperature > tempHigh) {
         alertMessage = `Temperature is HIGH: ${currentTemperature}°C (Limit was ${tempHigh}°C)`;
@@ -154,27 +165,13 @@ const checkDeviceLimits = async () => {
       } else if (humidLow && currentHumidity !== 'unavailable' && currentHumidity < humidLow) {
         alertMessage = `Humidity is LOW: ${currentHumidity}% (Limit was ${humidLow}%)`;
       }
-
       if (alertMessage) {
         const existingAlert = activeAlerts.find(a => a.deviceId === deviceid && a.originalMessage === alertMessage);
         if (!existingAlert) {
             alertIdCounter++;
-            const newAlert = {
-                id: alertIdCounter,
-                deviceId: deviceid,
-                deviceName: name,
-                message: `Alert for ${name}: ${alertMessage}`,
-                originalMessage: alertMessage, // To prevent duplicates
-                timestamp: new Date().toISOString()
-            };
+            const newAlert = { id: alertIdCounter, deviceId: deviceid, deviceName: name, message: `Alert for ${name}: ${alertMessage}`, originalMessage: alertMessage, timestamp: new Date().toISOString() };
             activeAlerts.push(newAlert);
-            
-            // SEND REAL EMAIL
-            sendAlertEmail(
-                stored.email,
-                `SONOFF Alert: ${name}`,
-                newAlert.message
-            );
+            sendAlertEmail(stored.email, `SONOFF Alert: ${name}`, newAlert.message);
         }
       }
     });
@@ -182,11 +179,9 @@ const checkDeviceLimits = async () => {
     console.error('Error during background check:', error.message);
   }
 };
-
 setInterval(checkDeviceLimits, 60000);
 
 app.use(router.routes()).use(router.allowedMethods());
-
 app.listen(port, () => {
   console.log(`Backend server running on port ${port}`);
 });
