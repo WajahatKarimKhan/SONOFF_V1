@@ -1,13 +1,34 @@
 const nodemailer = require('nodemailer');
-//updated
-// Configure the email transporter using credentials from the .env file
+
+// Explicitly configure the email transporter for Gmail
+// This is more reliable in cloud environments like Render
 const transporter = nodemailer.createTransport({
-  service: 'gmail', // Or another service like 'outlook'
+  host: 'smtp.gmail.com',
+  port: 465, // Use 465 for SSL, which is generally more reliable than 587 with STARTTLS
+  secure: true, // true for 465, false for other ports
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    pass: process.env.EMAIL_PASS, // Make sure this is the 16-character App Password with no spaces
   },
 });
+
+/**
+ * Verifies the transporter configuration and authentication on startup.
+ */
+const verifyConnection = async () => {
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+        console.warn('⚠️ Email credentials (EMAIL_USER or EMAIL_PASS) are not set in the environment. Email functionality is disabled.');
+        return;
+    }
+    try {
+        await transporter.verify();
+        console.log('✅ Email service is configured correctly and ready to send alerts.');
+    } catch (error) {
+        console.error('❌ CRITICAL: Email service failed to connect. Please check your credentials and network settings.');
+        console.error('Nodemailer Error:', error.message);
+    }
+};
+
 
 /**
  * Sends an alert email.
@@ -16,10 +37,8 @@ const transporter = nodemailer.createTransport({
  * @param {string} message The plain text message for the email.
  */
 const sendAlertEmail = async (recipientEmail, subject, message) => {
-  // Check if credentials are loaded before trying to send
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.error('Email credentials not found in .env file. Cannot send email.');
-    return;
+    return; // Already warned on startup
   }
 
   const mailOptions = {
@@ -27,16 +46,16 @@ const sendAlertEmail = async (recipientEmail, subject, message) => {
     to: recipientEmail,
     subject: subject,
     text: message,
-    html: `<p><b>SONOFF Device Alert:</b></p><p>${message.replace(/\n/g, '<br>')}</p>`, // A simple HTML version of the message
+    html: `<p><b>SONOFF Device Alert:</b></p><p>${message.replace(/\n/g, '<br>')}</p>`,
   };
 
   try {
     await transporter.sendMail(mailOptions);
-    console.log(`Successfully sent email alert to ${recipientEmail}`);
+    console.log(`🚀 Email alert sent successfully to ${recipientEmail}`);
   } catch (error) {
-    console.error(`CRITICAL: Failed to send email to ${recipientEmail}. Check your credentials and connection.`, error);
+    console.error(`CRITICAL: Failed to send email to ${recipientEmail}.`, error);
   }
 };
 
-module.exports = { sendAlertEmail };
+module.exports = { sendAlertEmail, verifyConnection };
 
