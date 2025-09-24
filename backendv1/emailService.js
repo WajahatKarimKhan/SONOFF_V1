@@ -2,12 +2,30 @@ const nodemailer = require('nodemailer');
 
 // Configure the email transporter using your .env variables
 const transporter = nodemailer.createTransport({
-  service: 'gmail', // Or another email service
+  service: 'gmail',
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
 });
+
+/**
+ * Verifies the transporter configuration and authentication.
+ * Logs a success or error message to the console.
+ */
+const verifyConnection = async () => {
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+        console.warn('Email credentials not set. Email functionality is disabled.');
+        return;
+    }
+    try {
+        await transporter.verify();
+        console.log('✅ Email transporter is ready and authenticated successfully.');
+    } catch (error) {
+        console.error('❌ CRITICAL: Email transporter failed to authenticate. Check your EMAIL_USER and EMAIL_PASS in the environment variables.');
+        console.error('Nodemailer Error:', error.message);
+    }
+};
 
 /**
  * Sends an alert email.
@@ -17,25 +35,25 @@ const transporter = nodemailer.createTransport({
  */
 const sendAlertEmail = async (recipientEmail, subject, message) => {
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.log('EMAIL_USER or EMAIL_PASS not set in .env file. Skipping email.');
+    console.log('Email credentials not set. Skipping email.');
     return;
   }
 
   const mailOptions = {
-    from: process.env.EMAIL_USER,
+    from: `SONOFF Portal <${process.env.EMAIL_USER}>`,
     to: recipientEmail,
     subject: subject,
     text: message,
-    html: `<p>${message.replace(/\n/g, '<br>')}</p>`, // Simple HTML version
+    html: `<p>${message.replace(/\n/g, '<br>')}</p>`,
   };
 
   try {
     await transporter.sendMail(mailOptions);
-    console.log(`Email sent successfully to ${recipientEmail}`);
+    console.log(`Email alert sent successfully to ${recipientEmail}`);
   } catch (error) {
     console.error(`Error sending email to ${recipientEmail}:`, error);
   }
 };
 
-module.exports = { sendAlertEmail };
+module.exports = { sendAlertEmail, verifyConnection };
 
