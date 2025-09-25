@@ -4,12 +4,12 @@ import ssl
 import asyncio
 import httpx
 from email.mime.text import MIMEText
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 # --- Configuration (Loaded from Render Environment Variables) ---
 # eWeLink Credentials
@@ -18,7 +18,7 @@ APP_SECRET = os.getenv("EWELINK_APP_SECRET")
 
 # Email Credentials
 EMAIL_SENDER = os.getenv("EMAIL_USER")
-EMAIL_PASS = os.getenv("EMAIL_APP_PASSWORD") # Using a different name to avoid conflict
+EMAIL_PASS = os.getenv("EMAIL_APP_PASSWORD") # Using a distinct name for clarity
 ALERT_RECIPIENT_EMAIL = "wkk24084@gmail.com"
 
 # Production URLs
@@ -26,21 +26,18 @@ FRONTEND_URL = "https://aedesign-sonoffs-app.onrender.com"
 BACKEND_URL = "https://aedesign-sonoff-backend.onrender.com"
 
 # --- In-Memory Storage ---
-# In a real production app, you might use a database like Redis for this.
-# For this project, in-memory dictionaries are simple and effective.
 token_store: Dict[str, Any] = {}
-device_limits: Dict[str, Any] = {}
-active_alerts: list = []
+device_master_list: Dict[str, Any] = {} # A master list to hold all device data
+active_alerts: List[Dict[str, Any]] = []
 alert_id_counter = 0
 
 # --- FastAPI Application Setup ---
 app = FastAPI(
-    title="SONOFF Portal Backend",
+    title="SONOFF Portal Backend (Python)",
     description="A Python-based backend to control eWeLink devices.",
-    version="1.0.0",
+    version="2.0.0",
 )
 
-# CORS Middleware to allow requests only from your live frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[FRONTEND_URL],
@@ -90,9 +87,8 @@ async def login():
         raise HTTPException(status_code=500, detail="EWELINK_APP_ID is not configured.")
     
     redirect_uri = f"{BACKEND_URL}/redirectUrl"
-    state = "your_random_state_string" # Should be a random string in a real app
+    state = "your_random_state_string"
     
-    # Manually construct the URL as per eWeLink V2 docs
     auth_url = (
         f"https://c2ccdn.coolkit.cc/oauth/index.html?"
         f"clientId={APP_ID}&"
@@ -100,7 +96,6 @@ async def login():
         f"grantType=authorization_code&"
         f"state={state}"
     )
-    print(f"Redirecting user to eWeLink login: {auth_url}")
     return RedirectResponse(url=auth_url)
 
 @app.get("/redirectUrl")
@@ -138,30 +133,36 @@ async def handle_redirect(code: str, region: str):
 # --- API Endpoints ---
 @app.get("/api/session")
 async def get_session():
-    if token_store.get("accessToken"):
-        return {"loggedIn": True, "region": token_store.get("region")}
-    return {"loggedIn": False}
+    return {"loggedIn": True} if token_store.get("accessToken") else {"loggedIn": False}
 
 @app.get("/api/devices")
 async def get_devices():
-    # This endpoint will be populated by the background task
-    return {"data": {"thingList": list(device_limits.values())}}
+    return {"data": {"thingList": list(device_master_list.values())}}
 
 @app.post("/api/devices/{device_id}/status")
 async def set_device_status(device_id: str, payload: TogglePayload):
-    # This is a placeholder; real control requires the eWeLink Python library
-    # which is not used here to keep it simple and match the friend's style.
-    # In a real scenario, you'd use `pyewelink` to send the command.
-    print(f"Simulating toggle for {device_id} to {payload.params.switch}")
-    # Update local state for immediate UI feedback
-    if device_id in device_limits:
-        device_limits[device_id]['itemData']['params']['switch'] = payload.params.switch
-    return {"error": 0, "data": {}}
+    from pyewelink import EWeLink
+    if not token_store.get("accessToken"):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        async with EWeLink(access_token=token_store["accessToken"], region=token_store["region"], app_id=APP_ID, app_secret=APP_SECRET) as client:
+            await client.set_device_power_state(device_id, payload.params.switch)
+        
+        if device_id in device_master_list:
+            device_master_list[device_id]['itemData']['params']['switch'] = payload.params.switch
+        return {"error": 0, "data": {}}
+    except Exception as e:
+        print(f"❌ ERROR toggling device {device_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to toggle device")
+
 
 @app.post("/api/devices/{device_id}/limits")
 async def save_limits(device_id: str, payload: LimitsPayload):
-    if device_id in device_limits:
-        device_limits[device_id]['itemData']['limits'] = payload.limits
+    if device_id in device_master_list:
+        if 'limits' not in device_master_list[device_id]['itemData']:
+             device_master_list[device_id]['itemData']['limits'] = {}
+        device_master_list[device_id]['itemData']['limits'].update(payload.limits)
+    
     print(f"Limits updated for {device_id}: {payload.limits}")
     return {"message": "Limits saved successfully."}
 
@@ -182,18 +183,13 @@ async def check_device_limits():
     from pyewelink import EWeLink
     
     while True:
-        await asyncio.sleep(60) # Check every 60 seconds
+        await asyncio.sleep(60)
         if not token_store.get("accessToken"):
             continue
 
         print("🔄 Running background check for device limits...")
         try:
-            async with EWeLink(
-                access_token=token_store["accessToken"], 
-                region=token_store["region"],
-                app_id=APP_ID,
-                app_secret=APP_SECRET
-            ) as client:
+            async with EWeLink(access_token=token_store["accessToken"], region=token_store["region"], app_id=APP_ID, app_secret=APP_SECRET) as client:
                 devices = await client.get_devices()
 
             for device in devices:
@@ -201,45 +197,35 @@ async def check_device_limits():
                 name = device["name"]
                 params = device.get("params", {})
                 
-                # Update our master list of devices
-                device_limits.setdefault(device_id, {})['itemData'] = {
-                    "name": name,
-                    "online": device.get("online"),
-                    "deviceid": device_id,
-                    "params": params,
-                    "extra": device.get("extra", {}),
-                    "limits": device_limits.get(device_id, {}).get('itemData', {}).get('limits', {})
+                # Update our master list with the latest data
+                current_limits = device_master_list.get(device_id, {}).get('itemData', {}).get('limits', {})
+                device_master_list[device_id] = {
+                    "itemData": {
+                        "name": name, "online": device.get("online"), "deviceid": device_id,
+                        "params": params, "extra": device.get("extra", {}), "limits": current_limits
+                    }
                 }
                 
-                limits = device_limits[device_id].get('itemData', {}).get('limits', {})
-                if not limits:
-                    continue
+                if not current_limits: continue
 
                 temp = params.get("currentTemperature")
                 humid = params.get("currentHumidity")
                 alert_message = None
 
-                if limits.get("tempHigh") and temp != "unavailable" and temp > limits["tempHigh"]:
-                    alert_message = f"Temperature is too HIGH: {temp}°C (Limit: {limits['tempHigh']}°C)."
-                elif limits.get("tempLow") and temp != "unavailable" and temp < limits["tempLow"]:
-                    alert_message = f"Temperature is too LOW: {temp}°C (Limit: {limits['tempLow']}°C)."
+                if current_limits.get("tempHigh") and temp != "unavailable" and temp > current_limits["tempHigh"]:
+                    alert_message = f"Temperature is too HIGH: {temp}°C (Limit: {current_limits['tempHigh']}°C)."
+                elif current_limits.get("tempLow") and temp != "unavailable" and temp < current_limits["tempLow"]:
+                    alert_message = f"Temperature is too LOW: {temp}°C (Limit: {current_limits['tempLow']}°C)."
                 
-                if limits.get("humidHigh") and humid != "unavailable" and humid > limits["humidHigh"]:
-                    alert_message = f"Humidity is too HIGH: {humid}% (Limit: {limits['humidHigh']}%)."
-                elif limits.get("humidLow") and humid != "unavailable" and humid < limits["humidLow"]:
-                    alert_message = f"Humidity is too LOW: {humid}% (Limit: {limits['humidLow']}%)."
+                if current_limits.get("humidHigh") and humid != "unavailable" and humid > current_limits["humidHigh"]:
+                    alert_message = f"Humidity is too HIGH: {humid}% (Limit: {current_limits['humidHigh']}%)."
+                elif current_limits.get("humidLow") and humid != "unavailable" and humid < current_limits["humidLow"]:
+                    alert_message = f"Humidity is too LOW: {humid}% (Limit: {current_limits['humidLow']}%)."
 
                 if alert_message:
-                    # Check if this exact alert already exists
                     if not any(a["originalMessage"] == alert_message for a in active_alerts if a["deviceId"] == device_id):
                         alert_id_counter += 1
-                        new_alert = {
-                            "id": alert_id_counter,
-                            "deviceId": device_id,
-                            "deviceName": name,
-                            "message": f"Alert for {name}: {alert_message}",
-                            "originalMessage": alert_message,
-                        }
+                        new_alert = {"id": alert_id_counter, "deviceId": device_id, "deviceName": name, "message": f"Alert for {name}: {alert_message}", "originalMessage": alert_message}
                         active_alerts.append(new_alert)
                         await send_alert_email(f"SONOFF Alert: {name}", new_alert["message"])
 
@@ -250,3 +236,4 @@ async def check_device_limits():
 async def startup_event():
     """Start the background monitoring task when the app starts."""
     asyncio.create_task(check_device_limits())
+
