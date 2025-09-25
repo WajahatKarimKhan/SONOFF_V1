@@ -1,7 +1,4 @@
 fastapi
 uvicorn[standard]
 httpx
-requests
 pyewelink==0.2.0
-python-dotenv
-asyncpg
