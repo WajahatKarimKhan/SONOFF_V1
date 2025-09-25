@@ -1,23 +1,20 @@
-require('dotenv').config(); // Load variables from .env file if it exists (for local testing)
+require('dotenv').config(); // Load variables from .env file if it exists, ignored on Render
 const Koa = require('koa');
 const Router = require('koa-router');
 const bodyParser = require('koa-bodyparser');
 const cors = require('@koa/cors');
 const eWeLink = require('ewelink-api-next').default;
 const { appId, appSecret } = require('./config');
-const { sendAlertEmail, verifyConnection } = require('./emailService'); // Import verifyConnection
+const { sendAlertEmail, verifyConnection } = require('./emailService');
 
 const app = new Koa();
 const router = new Router();
 const port = process.env.PORT || 8000;
 
 // --- Production URLs & Config ---
-// This is the ONLY origin allowed to connect to this backend.
-const allowedOrigins = [
-    'https://aedesign-sonoffs-app.onrender.com',
-];
 const frontendUrl = 'https://aedesign-sonoffs-app.onrender.com';
 const backendUrl = 'https://aedesign-sonoff-backend.onrender.com';
+const alertRecipientEmail = 'wkk24084@gmail.com'; // The hardcoded recipient email address
 
 // --- In-Memory Storage ---
 let tokenStore = {};
@@ -25,22 +22,17 @@ let deviceLimits = {};
 let activeAlerts = [];
 let alertIdCounter = 0;
 
-// --- Middleware Setup ---
-const corsOptions = {
-    origin: (ctx) => {
-        const origin = ctx.request.header.origin;
-        if (allowedOrigins.includes(origin)) return origin;
-        // Block requests from any other origin
-        return false;
-    }
-};
-app.use(cors(corsOptions));
+// --- Middleware ---
+app.use(cors({ origin: frontendUrl }));
 app.use(bodyParser());
 
+if (!appId || !appSecret) {
+    console.error("CRITICAL: appId or appSecret is missing from config.js.");
+    process.exit(1);
+}
 const client = new eWeLink.WebAPI({ appId, appSecret });
 
 // --- Routes ---
-// [Authentication and basic API routes are unchanged and omitted for brevity]
 router.get('/auth/login', (ctx) => {
   const redirectUrl = `${backendUrl}/redirectUrl`;
   const loginUrl = client.oauth.createLoginUrl({ redirectUrl, grantType: 'authorization_code', state: 'your_random_state_string' });
@@ -51,6 +43,7 @@ router.get('/auth/login', (ctx) => {
     ctx.body = 'Could not generate eWeLink login URL.';
   }
 });
+
 router.get('/redirectUrl', async (ctx) => {
   try {
     const { code, region } = ctx.request.query;
@@ -58,13 +51,16 @@ router.get('/redirectUrl', async (ctx) => {
     tokenStore = { accessToken: response.data.accessToken, refreshToken: response.data.refreshToken, region: region };
     ctx.redirect(frontendUrl);
   } catch (error) {
+    console.error("Authentication Error:", error.response ? error.response.data : error.message);
     ctx.status = 500;
-    ctx.body = 'Authentication failed.';
+    ctx.body = 'Authentication failed. Please check backend logs.';
   }
 });
+
 router.get('/api/session', (ctx) => {
   ctx.body = tokenStore.accessToken ? { loggedIn: true, region: tokenStore.region } : { loggedIn: false };
 });
+
 router.get('/api/devices', async (ctx) => {
     if (!tokenStore.accessToken) return ctx.throw(401, 'Not authenticated');
     client.at = tokenStore.accessToken;
@@ -79,6 +75,7 @@ router.get('/api/devices', async (ctx) => {
     }
     ctx.body = devices;
 });
+
 router.post('/api/devices/:id/status', async (ctx) => {
     if (!tokenStore.accessToken) return ctx.throw(401, 'Not authenticated');
     client.at = tokenStore.accessToken;
@@ -87,18 +84,21 @@ router.post('/api/devices/:id/status', async (ctx) => {
     const { params } = ctx.request.body;
     ctx.body = await client.device.setThingStatus({ type: 1, id, params });
 });
+
 router.post('/api/devices/:id/limits', (ctx) => {
     if (!tokenStore.accessToken) return ctx.throw(401, 'Not authenticated');
     const { id } = ctx.params;
-    const { limits, email } = ctx.request.body;
-    deviceLimits[id] = { limits, email };
+    const { limits } = ctx.request.body; // Email is no longer received from the frontend
+    deviceLimits[id] = limits; // Only save the limits
     console.log(`Limits updated for device ${id}:`, deviceLimits[id]);
     ctx.status = 200;
     ctx.body = { message: 'Limits saved successfully.' };
 });
+
 router.get('/api/alerts', (ctx) => {
     ctx.body = activeAlerts;
 });
+
 router.delete('/api/alerts/:id', (ctx) => {
     const alertId = parseInt(ctx.params.id, 10);
     activeAlerts = activeAlerts.filter(alert => alert.id !== alertId);
@@ -108,7 +108,6 @@ router.delete('/api/alerts/:id', (ctx) => {
 // --- Background Task for Checking Limits ---
 const checkDeviceLimits = async () => {
   if (!tokenStore.accessToken) return;
-
   try {
     client.at = tokenStore.accessToken;
     client.setUrl(tokenStore.region);
@@ -117,13 +116,13 @@ const checkDeviceLimits = async () => {
 
     devices.data.thingList.forEach(device => {
       const { deviceid, name, params } = device.itemData;
-      const stored = deviceLimits[deviceid];
-      if (!stored || !stored.limits || !stored.email) return;
+      const limits = deviceLimits[deviceid];
+      if (!limits) return; // Only check if limits are set for the device
 
-      const { tempHigh, tempLow, humidHigh, humidLow } = stored.limits;
+      const { tempHigh, tempLow, humidHigh, humidLow } = limits;
       const { currentTemperature, currentHumidity } = params;
       let alertMessage = null;
-
+      
       if (tempHigh && currentTemperature !== 'unavailable' && currentTemperature > tempHigh) {
         alertMessage = `Temperature is too HIGH: ${currentTemperature}°C (Your limit is ${tempHigh}°C).`;
       } else if (tempLow && currentTemperature !== 'unavailable' && currentTemperature < tempLow) {
@@ -141,8 +140,8 @@ const checkDeviceLimits = async () => {
             const newAlert = { id: alertIdCounter, deviceId: deviceid, deviceName: name, message: `Alert for ${name}: ${alertMessage}`, originalMessage: alertMessage };
             activeAlerts.push(newAlert);
             
-            // --- THIS NOW SENDS A REAL EMAIL ---
-            sendAlertEmail(stored.email, `SONOFF Alert: ${name}`, newAlert.message);
+            // --- SEND REAL EMAIL TO HARDCODED ADDRESS ---
+            sendAlertEmail(alertRecipientEmail, `SONOFF Alert: ${name}`, newAlert.message);
         }
       }
     });
@@ -150,12 +149,12 @@ const checkDeviceLimits = async () => {
     console.error('Error during background check:', error.message);
   }
 };
-
 setInterval(checkDeviceLimits, 60000);
 
 app.use(router.routes()).use(router.allowedMethods());
 
 app.listen(port, () => {
   console.log(`Backend server running on port ${port}`);
-  verifyConnection(); // Verify email connection on server startup
+  verifyConnection();
 });
+
