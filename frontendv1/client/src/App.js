@@ -89,13 +89,13 @@ function App() {
     setEditingDevice(null);
   };
 
-  const handleSaveLimits = async (limits, email) => {
+  const handleSaveLimits = async (limits) => { // Email parameter removed
     const deviceId = editingDevice.itemData.deviceid;
     try {
         await fetch(`${backendUrl}/api/devices/${deviceId}/limits`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ limits, email }),
+            body: JSON.stringify({ limits }), // Email no longer sent
         });
         const res = await fetch(`${backendUrl}/api/devices`);
         const data = await res.json();
@@ -116,7 +116,7 @@ function App() {
   };
 
   const renderDevice = (device) => {
-    const { name, online, deviceid, params, limits } = device.itemData;
+    const { name, online, deviceid, params } = device.itemData;
     const isSwitch = params?.switch !== undefined;
     
     return (
@@ -161,8 +161,8 @@ function App() {
     <div className="app-container">
         <header className="app-header">
             <h1>Temperature & Humidity Control</h1>
-            <div className="header-region">
-                Region: {session.region?.toUpperCase() || 'N/A'}
+            <div className="header-brand">
+                SONOFF Portal
             </div>
         </header>
 
@@ -202,13 +202,13 @@ function App() {
 }
 
 const LimitsModal = ({ device, onSave, onClose }) => {
+    // Email state is no longer needed here
     const [limits, setLimits] = useState({
-        tempHigh: device.itemData.limits?.limits.tempHigh || '',
-        tempLow: device.itemData.limits?.limits.tempLow || '',
-        humidHigh: device.itemData.limits?.limits.humidHigh || '',
-        humidLow: device.itemData.limits?.limits.humidLow || '',
+        tempHigh: device.itemData.limits?.tempHigh || '',
+        tempLow: device.itemData.limits?.tempLow || '',
+        humidHigh: device.itemData.limits?.humidHigh || '',
+        humidLow: device.itemData.limits?.humidLow || '',
     });
-    const [email, setEmail] = useState(device.itemData.limits?.email || '');
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -216,24 +216,22 @@ const LimitsModal = ({ device, onSave, onClose }) => {
     };
 
     const handleSave = () => {
+        // Only include limits that have a value
         const finalLimits = Object.entries(limits).reduce((acc, [key, value]) => {
             if (value !== '') acc[key] = value;
             return acc;
         }, {});
-        onSave(finalLimits, email);
+        onSave(finalLimits); // Email is no longer passed
     };
 
     return (
         <div className="modal-backdrop">
             <div className="modal-content">
                 <h2>Set Limits for {device.itemData.name}</h2>
-                <div className="form-group">
-                    <label>Alert Email Address</label>
-                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="user@example.com" />
-                </div>
+                <p className="modal-subtitle">Alerts will be sent to the pre-configured administrator email.</p>
                 <div className="form-grid">
                     <div className="form-group">
-                        <label>Temp > (°C)</label>
+                        <label>Temp {'>'} (°C)</label>
                         <input type="number" name="tempHigh" value={limits.tempHigh} onChange={handleChange} placeholder="e.g., 30" />
                     </div>
                     <div className="form-group">
@@ -241,7 +239,7 @@ const LimitsModal = ({ device, onSave, onClose }) => {
                         <input type="number" name="tempLow" value={limits.tempLow} onChange={handleChange} placeholder="e.g., 15" />
                     </div>
                     <div className="form-group">
-                        <label>Humidity > (%)</label>
+                        <label>Humidity {'>'} (%)</label>
                         <input type="number" name="humidHigh" value={limits.humidHigh} onChange={handleChange} placeholder="e.g., 80" />
                     </div>
                     <div className="form-group">
@@ -259,3 +257,4 @@ const LimitsModal = ({ device, onSave, onClose }) => {
 };
 
 export default App;
+
