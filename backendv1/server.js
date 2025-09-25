@@ -1,3 +1,4 @@
+require('dotenv').config(); // Load variables from .env file if it exists, ignored on Render
 const Koa = require('koa');
 const Router = require('koa-router');
 const bodyParser = require('koa-bodyparser');
@@ -156,12 +157,4 @@ app.listen(port, () => {
   console.log(`Backend server running on port ${port}`);
   verifyConnection();
 });
-```
-
-### 2. Update Your Dependencies (`package.json`)
-
-Now we can remove the `dotenv` package from your project's dependencies. First, run this command in your `backendv1` terminal:
-
-```bash
-npm uninstall dotenv
 
