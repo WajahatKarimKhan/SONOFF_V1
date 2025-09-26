@@ -14,7 +14,7 @@ const port = process.env.PORT || 8000;
 // --- Production URLs & Config ---
 const frontendUrl = 'https://aedesign-sonoffs-app.onrender.com';
 const backendUrl = 'https://aedesign-sonoff-backend.onrender.com';
-const alertRecipientEmail = 'wkk24084@gmail.com'; // The hardcoded recipient email address
+const alertRecipientEmail = 'wkarim@aedesign.com.pk'; // The hardcoded recipient email address
 
 // --- In-Memory Storage ---
 let tokenStore = {};
