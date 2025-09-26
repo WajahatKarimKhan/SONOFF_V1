@@ -1,4 +1,4 @@
-require('dotenv').config(); // Load variables from .env file if it exists, ignored on Render
+require('dotenv').config(); // Load variables from .env file if it exists
 const Koa = require('koa');
 const Router = require('koa-router');
 const bodyParser = require('koa-bodyparser');
@@ -14,7 +14,7 @@ const port = process.env.PORT || 8000;
 // --- Production URLs & Config ---
 const frontendUrl = 'https://aedesign-sonoffs-app.onrender.com';
 const backendUrl = 'https://aedesign-sonoff-backend.onrender.com';
-const alertRecipientEmail = 'wkarim@aedesign.com.pk'; // The hardcoded recipient email address
+const alertRecipientEmail = 'wkarim@aedesign.com.pk'; // The recipient email address
 
 // --- In-Memory Storage ---
 let tokenStore = {};
@@ -88,8 +88,8 @@ router.post('/api/devices/:id/status', async (ctx) => {
 router.post('/api/devices/:id/limits', (ctx) => {
     if (!tokenStore.accessToken) return ctx.throw(401, 'Not authenticated');
     const { id } = ctx.params;
-    const { limits } = ctx.request.body; // Email is no longer received from the frontend
-    deviceLimits[id] = limits; // Only save the limits
+    const { limits } = ctx.request.body;
+    deviceLimits[id] = limits;
     console.log(`Limits updated for device ${id}:`, deviceLimits[id]);
     ctx.status = 200;
     ctx.body = { message: 'Limits saved successfully.' };
@@ -117,7 +117,7 @@ const checkDeviceLimits = async () => {
     devices.data.thingList.forEach(device => {
       const { deviceid, name, params } = device.itemData;
       const limits = deviceLimits[deviceid];
-      if (!limits) return; // Only check if limits are set for the device
+      if (!limits) return;
 
       const { tempHigh, tempLow, humidHigh, humidLow } = limits;
       const { currentTemperature, currentHumidity } = params;
@@ -140,7 +140,6 @@ const checkDeviceLimits = async () => {
             const newAlert = { id: alertIdCounter, deviceId: deviceid, deviceName: name, message: `Alert for ${name}: ${alertMessage}`, originalMessage: alertMessage };
             activeAlerts.push(newAlert);
             
-            // --- SEND REAL EMAIL TO HARDCODED ADDRESS ---
             sendAlertEmail(alertRecipientEmail, `SONOFF Alert: ${name}`, newAlert.message);
         }
       }
@@ -155,6 +154,5 @@ app.use(router.routes()).use(router.allowedMethods());
 
 app.listen(port, () => {
   console.log(`Backend server running on port ${port}`);
-  verifyConnection();
+  verifyConnection(); // Verifies the Gmail connection on startup
 });
-
