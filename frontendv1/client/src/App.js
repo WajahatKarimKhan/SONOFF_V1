@@ -18,6 +18,7 @@ function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState(null);
 
+  // The backend URL remains the same
   const backendUrl = 'https://aedesign-sonoff-backend.onrender.com';
 
   useEffect(() => {
@@ -60,7 +61,8 @@ function App() {
       const response = await fetch(`${backendUrl}/api/devices/${deviceId}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ params: { switch: newStatus } }),
+        // --- CHANGED: Body now sends the switch status directly for the Python backend ---
+        body: JSON.stringify({ switch: newStatus }),
       });
       const result = await response.json();
       if (result.error === 0) {
@@ -89,13 +91,14 @@ function App() {
     setEditingDevice(null);
   };
 
-  const handleSaveLimits = async (limits) => { // Email parameter removed
+  const handleSaveLimits = async (limits) => {
     const deviceId = editingDevice.itemData.deviceid;
     try {
         await fetch(`${backendUrl}/api/devices/${deviceId}/limits`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ limits }), // Email no longer sent
+            // --- CHANGED: Body now sends the limits object directly for the Python backend ---
+            body: JSON.stringify(limits),
         });
         const res = await fetch(`${backendUrl}/api/devices`);
         const data = await res.json();
@@ -202,7 +205,6 @@ function App() {
 }
 
 const LimitsModal = ({ device, onSave, onClose }) => {
-    // Email state is no longer needed here
     const [limits, setLimits] = useState({
         tempHigh: device.itemData.limits?.tempHigh || '',
         tempLow: device.itemData.limits?.tempLow || '',
@@ -216,12 +218,11 @@ const LimitsModal = ({ device, onSave, onClose }) => {
     };
 
     const handleSave = () => {
-        // Only include limits that have a value
         const finalLimits = Object.entries(limits).reduce((acc, [key, value]) => {
             if (value !== '') acc[key] = value;
             return acc;
         }, {});
-        onSave(finalLimits); // Email is no longer passed
+        onSave(finalLimits);
     };
 
     return (
@@ -257,4 +258,3 @@ const LimitsModal = ({ device, onSave, onClose }) => {
 };
 
 export default App;
-
