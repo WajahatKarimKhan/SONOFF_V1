@@ -1,40 +1,96 @@
 /* --- Global Layout & Theming --- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 :root {
-  --primary-color: #0d6efd;
-  --primary-hover: #0b5ed7;
-  --background-color: #f8f9fa;
+  --primary-color: #4f46e5;
+  --primary-hover: #4338ca;
+  --background-color: #f3f4f6;
+  --sidebar-bg: #111827;
+  --sidebar-text: #d1d5db;
+  --sidebar-text-hover: #ffffff;
   --header-bg: #ffffff;
   --card-bg: #ffffff;
-  --text-color: #212529;
-  --text-light: #6c757d;
-  --border-color: #dee2e6;
-  --online-color: #198754;
-  --offline-color: #dc3545;
-  --alert-bg: #fff3cd;
-  --alert-border: #ffeeba;
-  --alert-text: #856404;
-  --shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-  --shadow-sm: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  --text-color: #1f2937;
+  --text-light: #6b7280;
+  --border-color: #e5e7eb;
+  --online-color: #10b981;
+  --offline-color: #ef4444;
+  --alert-bg: #fef3c7;
+  --alert-border: #fde68a;
+  --alert-text: #92400e;
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   background-color: var(--background-color);
   color: var(--text-color);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* --- New Main Layout --- */
-.app-container {
+/* --- New App Shell Layout --- */
+.app-shell {
   display: flex;
-  flex-direction: column;
   min-height: 100vh;
 }
 
-.app-header {
+.app-sidebar {
+  width: 260px;
+  background-color: var(--sidebar-bg);
+  color: var(--sidebar-text);
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.sidebar-header {
+  padding: 1.5rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #ffffff;
+  border-bottom: 1px solid #374151;
+  text-align: center;
+}
+
+.sidebar-nav ul {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+
+.sidebar-nav li {
+  display: flex;
   align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  margin: 0.25rem 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.sidebar-nav li:hover {
+  background-color: #374151;
+  color: var(--sidebar-text-hover);
+}
+
+.sidebar-nav li.active {
+  background-color: var(--primary-color);
+  color: #ffffff;
+  box-shadow: var(--shadow);
+}
+
+.app-main {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
   padding: 1rem 2rem;
   background-color: var(--header-bg);
   box-shadow: var(--shadow-sm);
@@ -44,22 +100,14 @@ body {
 
 .app-header h1 {
   font-size: 1.5rem;
+  font-weight: 600;
   margin: 0;
-}
-
-.header-brand {
-  font-size: 1.1rem;
-  color: var(--text-light);
-  font-weight: 500;
 }
 
 .main-content {
   flex: 1;
   padding: 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-  width: 100%;
-  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 /* --- Alert Banner --- */
@@ -71,9 +119,12 @@ body {
 .error-banner { background-color: #f8d7da; color: #721c24; padding: 1rem; border-radius: 8px; margin-bottom: 2rem; }
 
 /* --- Login Card --- */
-.login-card { background-color: var(--card-bg); padding: 2rem; border-radius: 8px; box-shadow: var(--shadow); max-width: 400px; text-align: center; margin: 2rem auto; }
+.login-card-wrapper { display: flex; justify-content: center; align-items: center; height: 100%; }
+.login-card { background-color: var(--card-bg); padding: 2.5rem; border-radius: 12px; box-shadow: var(--shadow); max-width: 450px; text-align: center; }
+.login-card h3 { font-size: 1.5rem; margin-bottom: 0.5rem;}
+.login-card p { color: var(--text-light); margin-bottom: 1.5rem;}
 
-/* --- Device Grid & Cards (New Design) --- */
+/* --- Device Grid & Cards --- */
 .device-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -82,12 +133,18 @@ body {
 
 .device-card {
   background-color: var(--card-bg);
-  padding: 1rem;
+  padding: 1.5rem;
   border-radius: 12px;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow);
   border: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.device-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 }
 
 .card-header {
@@ -95,56 +152,55 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--border-color);
 }
-.card-header h3 { margin: 0; font-size: 1.1rem; }
-.status-dot { width: 10px; height: 10px; background-color: var(--offline-color); border-radius: 50%; }
-.status-dot.online { background-color: var(--online-color); }
+.card-header h3 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+.status-dot { width: 12px; height: 12px; background-color: var(--offline-color); border-radius: 50%; box-shadow: 0 0 8px var(--offline-color);}
+.status-dot.online { background-color: var(--online-color); box-shadow: 0 0 8px var(--online-color); }
 
 .sensor-display {
   display: flex;
   justify-content: space-around;
   text-align: center;
   margin: 1rem 0;
+  padding: 1rem 0;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
 }
 .sensor-item svg { color: var(--primary-color); }
-.sensor-value { font-size: 1.75rem; font-weight: 300; margin: 0.25rem 0; }
-.sensor-label { font-size: 0.8rem; color: var(--text-light); text-transform: uppercase; }
+.sensor-value { font-size: 2rem; font-weight: 300; margin: 0.25rem 0; }
+.sensor-label { font-size: 0.75rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; }
 .sensor-error { color: var(--offline-color); font-size: 0.85rem; text-align: center; margin-top: 0.5rem; }
 
 .controls-footer {
   margin-top: auto;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border-color);
+  padding-top: 1.5rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.control-item { display: flex; align-items: center; gap: 0.5rem; }
+.control-item { display: flex; align-items: center; gap: 0.75rem; color: var(--text-light); }
 .toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; }
 .toggle-switch input { opacity: 0; width: 0; height: 0; }
 .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
-.slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+.slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; box-shadow: var(--shadow-sm); }
 input:checked + .slider { background-color: var(--primary-color); }
 input:disabled + .slider { cursor: not-allowed; background-color: #e9ecef; }
 input:checked + .slider:before { transform: translateX(20px); }
 
 /* --- Modal for Setting Limits --- */
 .modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: center; z-index: 1000; }
-.modal-content { background-color: white; padding: 2rem; border-radius: 8px; box-shadow: var(--shadow); width: 90%; max-width: 500px; }
+.modal-content { background-color: white; padding: 2rem; border-radius: 12px; box-shadow: var(--shadow); width: 90%; max-width: 500px; }
 .modal-content h2 { margin-top: 0; }
 .modal-subtitle { color: var(--text-light); margin-top: -1rem; margin-bottom: 1.5rem; font-size: 0.9rem; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.5rem 0; }
 .form-group { display: flex; flex-direction: column; }
 .form-group label { margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--text-light); }
-.form-group input { padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 5px; font-size: 1rem; }
+.form-group input { padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 1rem; margin-top: 1.5rem; }
 
 /* --- Buttons --- */
-.button { background-color: var(--primary-color); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 5px; cursor: pointer; font-size: 1rem; font-weight: 500; transition: background-color 0.2s; }
-.button:hover { background-color: var(--primary-hover); }
-.button-secondary { background-color: #6c757d; color: white; border: none; padding: 0.5rem 1rem; border-radius: 5px; cursor: pointer; font-size: 0.9rem; transition: background-color 0.2s; }
-.button-secondary:hover { background-color: #5a6268; }
-
+.button { background-color: var(--primary-color); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 500; transition: background-color 0.2s, transform 0.2s; }
+.button:hover { background-color: var(--primary-hover); transform: translateY(-2px); }
+.button-secondary { background-color: #e5e7eb; color: #374151; border: none; padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: background-color 0.2s; }
+.button-secondary:hover { background-color: #d1d5db; }
