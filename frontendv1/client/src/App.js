@@ -7,6 +7,8 @@ const TempIcon = () => <svg viewBox="0 0 24 24" width="24" height="24" fill="non
 const HumidityIcon = () => <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path></svg>;
 const AlertIcon = () => <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>;
 const BuildingIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>;
+const MenuIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>;
+
 
 function App() {
     const [session, setSession] = useState({ loggedIn: false });
@@ -18,13 +20,12 @@ function App() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingDevice, setEditingDevice] = useState(null);
     
-    // State to manage the active location in the sidebar
     const [activeLocation, setActiveLocation] = useState('Head Office');
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
     const backendUrl = 'https://aedesign-sonoff-backend.onrender.com';
 
     useEffect(() => {
-        // This effect is for the initial session check only.
         fetch(`${backendUrl}/api/session`)
             .then(res => res.json())
             .then(data => { setSession(data); setLoading(false); })
@@ -32,32 +33,32 @@ function App() {
     }, []);
 
     useEffect(() => {
-        // This effect fetches device data when the user is logged in.
         if (session.loggedIn) {
             setError(null);
-            
             const fetchAllData = () => {
                 fetch(`${backendUrl}/api/devices`)
                     .then(res => res.json())
                     .then(data => setDevices(data.data?.thingList || []))
                     .catch(err => setError("Failed to fetch devices."));
-
                 fetch(`${backendUrl}/api/alerts`)
                     .then(res => res.json())
                     .then(setAlerts)
                     .catch(err => console.error("Failed to fetch alerts"));
             };
-
             fetchAllData();
-            const interval = setInterval(fetchAllData, 30000); // Refresh every 30 seconds
+            const interval = setInterval(fetchAllData, 30000);
             return () => clearInterval(interval);
         }
     }, [session.loggedIn]);
 
-    const handleLogin = () => {
-        window.location.href = `${backendUrl}/auth/login`;
+    const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+
+    const handleLocationSelect = (location) => {
+        setActiveLocation(location);
+        setIsSidebarOpen(false); // Collapse sidebar on selection
     };
 
+    const handleLogin = () => { window.location.href = `${backendUrl}/auth/login`; };
     const handleToggle = async (device) => {
         const deviceId = device.itemData.deviceid;
         const newStatus = device.itemData.params.switch === 'on' ? 'off' : 'on';
@@ -76,23 +77,12 @@ function App() {
                             : d
                     )
                 );
-            } else {
-                setError('Failed to toggle device.');
-            }
-        } catch (err) {
-            setError('An error occurred while toggling the device.');
-        }
+            } else { setError('Failed to toggle device.'); }
+        } catch (err) { setError('An error occurred while toggling the device.'); }
     };
     
-    const handleOpenModal = (device) => {
-        setEditingDevice(device);
-        setIsModalOpen(true);
-    };
-
-    const handleCloseModal = () => {
-        setIsModalOpen(false);
-        setEditingDevice(null);
-    };
+    const handleOpenModal = (device) => { setEditingDevice(device); setIsModalOpen(true); };
+    const handleCloseModal = () => { setIsModalOpen(false); setEditingDevice(null); };
 
     const handleSaveLimits = async (limits) => {
         const deviceId = editingDevice.itemData.deviceid;
@@ -106,62 +96,50 @@ function App() {
             const data = await res.json();
             setDevices(data.data?.thingList || []);
             handleCloseModal();
-        } catch (err) {
-            setError('Failed to save limits.');
-        }
+        } catch (err) { setError('Failed to save limits.'); }
     };
 
     const handleDismissAlert = async (alertId) => {
         try {
             await fetch(`${backendUrl}/api/alerts/${alertId}`, { method: 'DELETE' });
             setAlerts(currentAlerts => currentAlerts.filter(a => a.id !== alertId));
-        } catch (err) {
-            console.error("Failed to dismiss alert");
-        }
+        } catch (err) { console.error("Failed to dismiss alert"); }
     };
 
-    const renderDevice = (device) => {
-        const { name, online, deviceid, params } = device.itemData;
-        const isSwitch = params?.switch !== undefined;
-        
-        return (
-            <div key={deviceid} className={`device-card ${online ? 'online' : ''}`}>
-                <div className="card-header">
-                    <h3>{name}</h3>
-                    <span className={`status-dot ${online ? 'online' : ''}`}></span>
+    const renderDevice = (device) => (
+        <div key={device.itemData.deviceid} className={`device-card ${device.itemData.online ? 'online' : ''}`}>
+            <div className="card-header">
+                <h3>{device.itemData.name}</h3>
+                <span className={`status-dot ${device.itemData.online ? 'online' : ''}`}></span>
+            </div>
+            <div className="sensor-display">
+                <div className="sensor-item">
+                    <TempIcon />
+                    <div className="sensor-value">{device.itemData.params.currentTemperature !== 'unavailable' ? `${device.itemData.params.currentTemperature}°C` : 'N/A'}</div>
+                    <div className="sensor-label">Temperature</div>
                 </div>
-                
-                <div className="sensor-display">
-                    <div className="sensor-item">
-                        <TempIcon />
-                        <div className="sensor-value">{params.currentTemperature !== 'unavailable' ? `${params.currentTemperature}°C` : 'N/A'}</div>
-                        <div className="sensor-label">Temperature</div>
-                    </div>
-                    <div className="sensor-item">
-                        <HumidityIcon />
-                        <div className="sensor-value">{params.currentHumidity !== 'unavailable' ? `${params.currentHumidity}%` : 'N/A'}</div>
-                        <div className="sensor-label">Humidity</div>
-                    </div>
-                </div>
-
-                {params.sensorType === 'errorType' && <p className="sensor-error">Sensor not detected. Please check the connection.</p>}
-                
-                <div className="controls-footer">
-                    {isSwitch && (
-                        <div className="control-item">
-                            <PowerIcon />
-                            <label className="toggle-switch">
-                                <input type="checkbox" checked={params.switch === 'on'} onChange={() => handleToggle(device)} disabled={!online} />
-                                <span className="slider"></span>
-                            </label>
-                        </div>
-                    )}
-                    <button className="button-secondary" onClick={() => handleOpenModal(device)}>Set Limits</button>
+                <div className="sensor-item">
+                    <HumidityIcon />
+                    <div className="sensor-value">{device.itemData.params.currentHumidity !== 'unavailable' ? `${device.itemData.params.currentHumidity}%` : 'N/A'}</div>
+                    <div className="sensor-label">Humidity</div>
                 </div>
             </div>
-        );
-    };
-
+            {device.itemData.params.sensorType === 'errorType' && <p className="sensor-error">Sensor not detected.</p>}
+            <div className="controls-footer">
+                {device.itemData.params?.switch !== undefined && (
+                    <div className="control-item">
+                        <PowerIcon />
+                        <label className="toggle-switch">
+                            <input type="checkbox" checked={device.itemData.params.switch === 'on'} onChange={() => handleToggle(device)} disabled={!device.itemData.online} />
+                            <span className="slider"></span>
+                        </label>
+                    </div>
+                )}
+                <button className="button-secondary" onClick={() => handleOpenModal(device)}>Set Limits</button>
+            </div>
+        </div>
+    );
+    
     const renderContent = () => {
         if (loading) return <p>Loading...</p>;
 
@@ -177,7 +155,6 @@ function App() {
             );
         }
 
-        // --- Content switching based on active location ---
         switch (activeLocation) {
             case 'Head Office':
                 return (
@@ -195,22 +172,20 @@ function App() {
     };
 
     return (
-        <div className="app-shell">
+        <div className={`app-shell ${isSidebarOpen ? 'sidebar-open' : 'sidebar-collapsed'}`}>
             <aside className="app-sidebar">
-                <div className="sidebar-header">
-                    AE DESIGN
-                </div>
+                <div className="sidebar-header"></div>
                 <nav className="sidebar-nav">
                     <ul>
-                        <li className={activeLocation === 'Head Office' ? 'active' : ''} onClick={() => setActiveLocation('Head Office')}>
+                        <li className={activeLocation === 'Head Office' ? 'active' : ''} onClick={() => handleLocationSelect('Head Office')}>
                             <BuildingIcon />
-                            <span>BECO, Head Office</span>
+                            <span>Head Office</span>
                         </li>
-                        <li className={activeLocation === 'Islamabad Office' ? 'active' : ''} onClick={() => setActiveLocation('Islamabad Office')}>
+                        <li className={activeLocation === 'Islamabad Office' ? 'active' : ''} onClick={() => handleLocationSelect('Islamabad Office')}>
                             <BuildingIcon />
-                            <span>BECO, Islamabad Office</span>
+                            <span>Islamabad Office</span>
                         </li>
-                         <li className={activeLocation === 'BECO' ? 'active' : ''} onClick={() => setActiveLocation('BECO')}>
+                         <li className={activeLocation === 'BECO' ? 'active' : ''} onClick={() => handleLocationSelect('BECO')}>
                             <BuildingIcon />
                             <span>BECO</span>
                         </li>
@@ -220,12 +195,14 @@ function App() {
 
             <div className="app-main">
                 <header className="app-header">
-                    <h1>{activeLocation} Dashboard</h1>
+                    <button className="hamburger-btn" onClick={toggleSidebar}>
+                        <MenuIcon />
+                    </button>
+                    <h1>Temperature & Humidity Control</h1>
                 </header>
                 
                 <main className="main-content">
                     {error && <div className="error-banner">{error}</div>}
-
                     {alerts.length > 0 && (
                         <div className="alerts-container">
                             {alerts.map(alert => (
@@ -237,17 +214,21 @@ function App() {
                             ))}
                         </div>
                     )}
-
                     {renderContent()}
                 </main>
             </div>
+            
+            {!isSidebarOpen && (
+                <div className="location-footer">
+                    <span>Location: {activeLocation}</span>
+                </div>
+            )}
             
             {isModalOpen && <LimitsModal device={editingDevice} onSave={handleSaveLimits} onClose={handleCloseModal} />}
         </div>
     );
 }
 
-// --- Limits Modal Component (no changes needed) ---
 const LimitsModal = ({ device, onSave, onClose }) => {
     const [limits, setLimits] = useState({
         tempHigh: device.itemData.limits?.tempHigh || '',
@@ -290,3 +271,4 @@ const LimitsModal = ({ device, onSave, onClose }) => {
 };
 
 export default App;
+
