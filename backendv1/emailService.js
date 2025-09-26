@@ -1,64 +1,86 @@
+// emailService.js - Now supports both SendGrid and Gmail
+
 const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  // --- ADD THIS BLOCK ---
-  // Increase the timeout to 10 seconds (10000 milliseconds)
-  connectionTimeout: 10000, 
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
-  // --------------------
-});
+// --- Service Initialization ---
+let isSendGridInitialized = false;
+let isGmailInitialized = false;
+let gmailTransporter;
+
+// 1. Initialize SendGrid
+if (process.env.SENDGRID_API_KEY && process.env.EMAIL_USER) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  isSendGridInitialized = true;
+  console.log('✅ SendGrid email service is configured.');
+} else {
+  console.warn('⚠️ SendGrid credentials not set. SendGrid is disabled.');
+}
+
+// 2. Initialize Gmail (Nodemailer)
+if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+  gmailTransporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    auth: {
+      user: process.env.EMAIL_USER, // Your Gmail address
+      pass: process.env.EMAIL_PASS, // Your 16-character Gmail App Password
+    },
+    connectionTimeout: 10000,
+  });
+  // We don't verify here to avoid startup delays, but will log errors on send.
+  isGmailInitialized = true;
+  console.log('✅ Gmail (Nodemailer) service is configured.');
+} else {
+  console.warn('⚠️ Gmail credentials (EMAIL_PASS) not set. Gmail is disabled.');
+}
+
 
 /**
- * Verifies the email transporter configuration when the server starts.
- */
-const verifyConnection = async () => {
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-        console.warn('⚠️ Email credentials (EMAIL_USER or EMAIL_PASS) are not set. Email functionality is disabled.');
-        return;
-    }
-    try {
-        await transporter.verify();
-        console.log('✅ Gmail email service is configured correctly and ready to send alerts.');
-    } catch (error) {
-        console.error('❌ CRITICAL: Gmail service failed to connect. Please check your credentials and network settings.');
-        console.error('Nodemailer Error:', error.message);
-    }
-};
-
-/**
- * Sends an alert email using the Gmail account.
- * @param {string} recipientEmail The email address to send the alert to.
- * @param {string} subject The subject line of the email.
- * @param {string} message The plain text message for the email.
+ * The main email sending function.
+ * It will attempt to send an email using every service that has been successfully initialized.
  */
 const sendAlertEmail = async (recipientEmail, subject, message) => {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    return; // Already warned on startup
+  if (!isSendGridInitialized && !isGmailInitialized) {
+    console.error('❌ No email services are configured. Cannot send alert.');
+    return;
   }
 
-  const mailOptions = {
-    from: `SONOFF Portal <${process.env.EMAIL_USER}>`,
-    to: recipientEmail,
-    subject: subject,
-    text: message,
-    html: `<p><b>SONOFF Device Alert:</b></p><p>${message.replace(/\n/g, '<br>')}</p>`,
-  };
+  // --- Attempt to send with SendGrid ---
+  if (isSendGridInitialized) {
+    const msg = {
+      to: recipientEmail,
+      from: {
+        name: 'SONOFF Alerts (SendGrid)',
+        email: process.env.EMAIL_USER, // The verified sender
+      },
+      subject: subject,
+      html: `<p><b>SONOFF Device Alert:</b></p><p>${message.replace(/\n/g, '<br>')}</p>`,
+    };
+    try {
+      await sgMail.send(msg);
+      console.log(`🚀 Email alert sent successfully to ${recipientEmail} via SendGrid.`);
+    } catch (error) {
+      console.error(`❌ CRITICAL: Failed to send email via SendGrid.`, error.response?.body || error.message);
+    }
+  }
 
-  try {
-    await transporter.sendMail(mailOptions);
-    console.log(`🚀 Email alert sent successfully to ${recipientEmail} via Gmail.`);
-  } catch (error) {
-    console.error(`CRITICAL: Failed to send email to ${recipientEmail} via Gmail.`, error);
+  // --- Attempt to send with Gmail (Nodemailer) ---
+  if (isGmailInitialized) {
+    const mailOptions = {
+      from: `SONOFF Alerts (Gmail) <${process.env.EMAIL_USER}>`,
+      to: recipientEmail,
+      subject: subject,
+      html: `<p><b>SONOFF Device Alert:</b></p><p>${message.replace(/\n/g, '<br>')}</p>`,
+    };
+    try {
+      await gmailTransporter.sendMail(mailOptions);
+      console.log(`🚀 Email alert sent successfully to ${recipientEmail} via Gmail.`);
+    } catch (error) {
+      console.error(`❌ CRITICAL: Failed to send email via Gmail.`, error.message);
+    }
   }
 };
 
-module.exports = { sendAlertEmail, verifyConnection };
-
+module.exports = { sendAlertEmail };
