@@ -270,3 +270,38 @@ input:checked + .slider:before { transform: translateX(20px); }
 .button-secondary { background-color: #e5e7eb; color: #374151; border: none; padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: background-color 0.2s; }
 .button-secondary:hover { background-color: #d1d5db; }
 
+/* --- New styles for Logged-Out state and Mobile Overlay --- */
+
+/* When logged out, force the main content to take up the full screen */
+.logged-out .app-main {
+  margin-left: 0 !important;
+  width: 100% !important;
+}
+
+/* New overlay for mobile when sidebar is open */
+.sidebar-overlay {
+  display: none; /* Hidden by default on desktop */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1000; /* Should be below the sidebar but above the content */
+}
+
+/* --- Media Query for Mobile Devices (screens 768px or less) --- */
+@media (max-width: 768px) {
+  /* Make the main content always take full width on mobile */
+  .app-main,
+  .sidebar-open .app-main,
+  .sidebar-collapsed .app-main {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  /* Show the overlay when the sidebar is open on mobile */
+  .sidebar-open .sidebar-overlay {
+    display: block;
+  }
+}
