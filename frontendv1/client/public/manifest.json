@@ -1,6 +1,6 @@
 {
-  "short_name": "React App",
-  "name": "Create React App Sample",
+  "short_name": "THMC",
+  "name": "Temperature & humidity monitoring and control",
   "icons": [
     {
       "src": "favicon.ico",
