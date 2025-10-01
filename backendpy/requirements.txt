@@ -1,5 +1,3 @@
 fastapi
 uvicorn[standard]
-httpx
-pyewelink==0.2.0
 python-dotenv
