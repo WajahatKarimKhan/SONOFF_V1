@@ -134,6 +134,46 @@ router.delete('/api/alerts/:id', (ctx) => {
     ctx.status = 204;
 });
 
+// ... after your router.delete('/api/alerts/:id', ...) route
+
+// ===================================================================
+//  ⚠️ PUBLIC DEBUG ENDPOINT - COMMENT OUT/DELETE WHEN NOT IN USE ⚠️
+//  Visiting https://aedesign-sonoff-backend.onrender.com/api/devices/raw-debug
+//  will make all your device data publicly visible.
+// ===================================================================
+router.get('/api/devices/raw-debug', async (ctx) => {
+    // First, check if you are logged in. This adds a small layer of security.
+    if (!tokenStore.accessToken) {
+        ctx.status = 401; // Unauthorized
+        ctx.body = { 
+            error: 'Not authenticated.',
+            message: 'Please log in through the frontend application first to generate a session token.' 
+        };
+        return;
+    }
+
+    try {
+        // Fetch the latest device data from eWeLink
+        client.at = tokenStore.accessToken;
+        client.setUrl(tokenStore.region);
+        const devices = await client.device.getAllThingsAllPages();
+
+        // Display the raw JSON data directly in the browser, nicely formatted
+        ctx.type = 'json';
+        ctx.body = JSON.stringify(devices, null, 2); // The '2' makes it readable
+    } catch (error) {
+        ctx.status = 500; // Internal Server Error
+        ctx.body = { 
+            error: 'Failed to fetch devices from eWeLink API.',
+            details: error.message 
+        };
+    }
+});
+// ===================================================================
+//  END OF PUBLIC DEBUG ENDPOINT
+// ===================================================================
+
+
 // --- Background Task for Checking Limits (MODIFIED) ---
 const checkDeviceLimits = async () => {
     if (!tokenStore.accessToken) return;
