@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
-// --- SVG Icons ---
+// --- SVG Icons (no changes here) ---
 const PowerIcon = () => <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>;
 const TempIcon = () => <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path></svg>;
 const HumidityIcon = () => <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path></svg>;
@@ -21,7 +21,9 @@ function App() {
     const [editingDevice, setEditingDevice] = useState(null);
     
     const [activeLocation, setActiveLocation] = useState('Head Office');
-    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    
+    // --- CHANGE 1: Sidebar now defaults to closed ---
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     const backendUrl = 'https://aedesign-sonoff-backend.onrender.com';
 
@@ -55,7 +57,8 @@ function App() {
 
     const handleLocationSelect = (location) => {
         setActiveLocation(location);
-        setIsSidebarOpen(false); // Collapse sidebar on selection
+        // Automatically close sidebar on selection, which is great for mobile
+        setIsSidebarOpen(false);
     };
 
     const handleLogin = () => { window.location.href = `${backendUrl}/auth/login`; };
@@ -171,33 +174,45 @@ function App() {
         }
     };
 
+    // --- CHANGE 2: CSS classes are now smarter, handling logged-out state ---
+    const shellClasses = `app-shell ${session.loggedIn ? (isSidebarOpen ? 'sidebar-open' : 'sidebar-collapsed') : 'logged-out'}`;
+
     return (
-        <div className={`app-shell ${isSidebarOpen ? 'sidebar-open' : 'sidebar-collapsed'}`}>
-            <aside className="app-sidebar">
-                <div className="sidebar-header"></div>
-                <nav className="sidebar-nav">
-                    <ul>
-                        <li className={activeLocation === 'Head Office' ? 'active' : ''} onClick={() => handleLocationSelect('Head Office')}>
-                            <BuildingIcon />
-                            <span>Head Office</span>
-                        </li>
-                        <li className={activeLocation === 'Islamabad Office' ? 'active' : ''} onClick={() => handleLocationSelect('Islamabad Office')}>
-                            <BuildingIcon />
-                            <span>Islamabad Office</span>
-                        </li>
-                         <li className={activeLocation === 'BECO' ? 'active' : ''} onClick={() => handleLocationSelect('BECO')}>
-                            <BuildingIcon />
-                            <span>BECO</span>
-                        </li>
-                    </ul>
-                </nav>
-            </aside>
+        <div className={shellClasses}>
+            {/* --- CHANGE 3: Sidebar and overlay only render when logged in --- */}
+            {session.loggedIn && (
+                <>
+                    <aside className="app-sidebar">
+                        <div className="sidebar-header"></div>
+                        <nav className="sidebar-nav">
+                            <ul>
+                                <li className={activeLocation === 'Head Office' ? 'active' : ''} onClick={() => handleLocationSelect('Head Office')}>
+                                    <BuildingIcon />
+                                    <span>Head Office</span>
+                                </li>
+                                <li className={activeLocation === 'Islamabad Office' ? 'active' : ''} onClick={() => handleLocationSelect('Islamabad Office')}>
+                                    <BuildingIcon />
+                                    <span>Islamabad Office</span>
+                                </li>
+                                 <li className={activeLocation === 'BECO' ? 'active' : ''} onClick={() => handleLocationSelect('BECO')}>
+                                    <BuildingIcon />
+                                    <span>BECO</span>
+                                </li>
+                            </ul>
+                        </nav>
+                    </aside>
+                    {isSidebarOpen && <div className="sidebar-overlay" onClick={toggleSidebar}></div>}
+                </>
+            )}
 
             <div className="app-main">
                 <header className="app-header">
-                    <button className="hamburger-btn" onClick={toggleSidebar}>
-                        <MenuIcon />
-                    </button>
+                    {/* --- CHANGE 4: Hamburger menu only shows when logged in --- */}
+                    {session.loggedIn && (
+                        <button className="hamburger-btn" onClick={toggleSidebar}>
+                            <MenuIcon />
+                        </button>
+                    )}
                     <h1>Temperature & Humidity Control</h1>
                 </header>
                 
@@ -218,7 +233,7 @@ function App() {
                 </main>
             </div>
             
-            {!isSidebarOpen && (
+            {session.loggedIn && !isSidebarOpen && (
                 <div className="location-footer">
                     <span>Location: {activeLocation}</span>
                 </div>
@@ -229,6 +244,7 @@ function App() {
     );
 }
 
+// LimitsModal component remains unchanged
 const LimitsModal = ({ device, onSave, onClose }) => {
     const [limits, setLimits] = useState({
         tempHigh: device.itemData.limits?.tempHigh || '',
@@ -271,4 +287,3 @@ const LimitsModal = ({ device, onSave, onClose }) => {
 };
 
 export default App;
-
