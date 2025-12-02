@@ -9,10 +9,15 @@ from datetime import datetime
 # ================= CONFIGURATION =================
 app = FastAPI(title="Smart Gridx Backend")
 
-# Allow CORS for React Frontend
+# Allow CORS for React Frontend (Updated for Render Deployment)
+origins = [
+    "http://localhost:5173",          # Local Development
+    "https://smartgridx.onrender.com" # Your Deployed Frontend
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins, 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
