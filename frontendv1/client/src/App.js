@@ -1,289 +1,260 @@
 import React, { useState, useEffect } from 'react';
-import './App.css';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Activity, Zap, AlertTriangle, ShieldCheck, Server, Thermometer, Wifi } from 'lucide-react';
 
-// --- SVG Icons (no changes here) ---
-const PowerIcon = () => <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>;
-const TempIcon = () => <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path></svg>;
-const HumidityIcon = () => <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path></svg>;
-const AlertIcon = () => <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>;
-const BuildingIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>;
-const MenuIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>;
+// ================= CONFIGURATION =================
+// CHANGE THIS TO YOUR RENDER URL WHEN DEPLOYING
+const WS_URL = "ws://localhost:8000/ws/client"; 
 
+// ================= COMPONENT: GAUGE CARD =================
+const StatCard = ({ label, value, unit, icon: Icon, color }) => (
+  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+    <div>
+      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
+      <div className="flex items-end gap-1 mt-1">
+        <span className="text-2xl font-bold text-slate-800">{value}</span>
+        <span className="text-sm font-medium text-slate-400 mb-1">{unit}</span>
+      </div>
+    </div>
+    <div className={`p-3 rounded-full ${color} bg-opacity-10`}>
+      <Icon size={20} className={color.replace('bg-', 'text-')} />
+    </div>
+  </div>
+);
 
-function App() {
-    const [session, setSession] = useState({ loggedIn: false });
-    const [devices, setDevices] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    
-    const [alerts, setAlerts] = useState([]);
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingDevice, setEditingDevice] = useState(null);
-    
-    const [activeLocation, setActiveLocation] = useState('Head Office');
-    
-    // --- CHANGE 1: Sidebar now defaults to closed ---
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+// ================= COMPONENT: RELAY BUTTON =================
+const RelayButton = ({ index, state, onClick }) => (
+  <button
+    onClick={() => onClick(index, !state)}
+    className={`w-full p-4 rounded-xl border transition-all duration-200 flex items-center justify-between group
+      ${state 
+        ? 'bg-amber-500 border-amber-500 shadow-lg shadow-amber-500/30' 
+        : 'bg-white border-slate-200 hover:border-slate-300'}`}
+  >
+    <div className="flex items-center gap-3">
+      <div className={`w-2 h-2 rounded-full ${state ? 'bg-white animate-pulse' : 'bg-slate-300'}`} />
+      <span className={`font-semibold ${state ? 'text-white' : 'text-slate-600'}`}>
+        Circuit {index + 1}
+      </span>
+    </div>
+    <div className={`text-xs font-bold px-2 py-1 rounded uppercase
+      ${state ? 'bg-white text-amber-600' : 'bg-slate-100 text-slate-500'}`}>
+      {state ? 'ON' : 'OFF'}
+    </div>
+  </button>
+);
 
-    const backendUrl = 'https://aedesign-sonoff-backend.onrender.com';
+// ================= MAIN APP =================
+const App = () => {
+  const [socket, setSocket] = useState(null);
+  const [systemData, setSystemData] = useState(null);
+  const [trendData, setTrendData] = useState([]);
 
-    useEffect(() => {
-        fetch(`${backendUrl}/api/session`)
-            .then(res => res.json())
-            .then(data => { setSession(data); setLoading(false); })
-            .catch(err => { setError("Could not connect to backend."); setLoading(false); });
-    }, []);
+  // WebSocket Connection
+  useEffect(() => {
+    const ws = new WebSocket(WS_URL);
 
-    useEffect(() => {
-        if (session.loggedIn) {
-            setError(null);
-            const fetchAllData = () => {
-                fetch(`${backendUrl}/api/devices`)
-                    .then(res => res.json())
-                    .then(data => setDevices(data.data?.thingList || []))
-                    .catch(err => setError("Failed to fetch devices."));
-                fetch(`${backendUrl}/api/alerts`)
-                    .then(res => res.json())
-                    .then(setAlerts)
-                    .catch(err => console.error("Failed to fetch alerts"));
-            };
-            fetchAllData();
-            const interval = setInterval(fetchAllData, 30000);
-            return () => clearInterval(interval);
-        }
-    }, [session.loggedIn]);
-
-    const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
-
-    const handleLocationSelect = (location) => {
-        setActiveLocation(location);
-        // Automatically close sidebar on selection, which is great for mobile
-        setIsSidebarOpen(false);
+    ws.onopen = () => {
+      console.log("Connected to Backend");
+      setSocket(ws);
     };
 
-    const handleLogin = () => { window.location.href = `${backendUrl}/auth/login`; };
-    const handleToggle = async (device) => {
-        const deviceId = device.itemData.deviceid;
-        const newStatus = device.itemData.params.switch === 'on' ? 'off' : 'on';
-        try {
-            const response = await fetch(`${backendUrl}/api/devices/${deviceId}/status`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ params: { switch: newStatus } }),
-            });
-            const result = await response.json();
-            if (result.error === 0) {
-                setDevices(currentDevices =>
-                    currentDevices.map(d =>
-                        d.itemData.deviceid === deviceId
-                            ? { ...d, itemData: { ...d.itemData, params: { ...d.itemData.params, switch: newStatus } } }
-                            : d
-                    )
-                );
-            } else { setError('Failed to toggle device.'); }
-        } catch (err) { setError('An error occurred while toggling the device.'); }
-    };
-    
-    const handleOpenModal = (device) => { setEditingDevice(device); setIsModalOpen(true); };
-    const handleCloseModal = () => { setIsModalOpen(false); setEditingDevice(null); };
-
-    const handleSaveLimits = async (limits) => {
-        const deviceId = editingDevice.itemData.deviceid;
-        try {
-            await fetch(`${backendUrl}/api/devices/${deviceId}/limits`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ limits }),
-            });
-            const res = await fetch(`${backendUrl}/api/devices`);
-            const data = await res.json();
-            setDevices(data.data?.thingList || []);
-            handleCloseModal();
-        } catch (err) { setError('Failed to save limits.'); }
+    ws.onmessage = (event) => {
+      const payload = JSON.parse(event.data);
+      if (payload.type === "update") {
+        setSystemData(payload.data);
+        
+        // Update Chart Data (Keep last 20 points)
+        setTrendData(prev => {
+          const newData = [...prev, {
+            time: new Date().toLocaleTimeString(),
+            grid: payload.data.pole.power,
+            house: payload.data.house.power
+          }];
+          return newData.slice(-20);
+        });
+      }
     };
 
-    const handleDismissAlert = async (alertId) => {
-        try {
-            await fetch(`${backendUrl}/api/alerts/${alertId}`, { method: 'DELETE' });
-            setAlerts(currentAlerts => currentAlerts.filter(a => a.id !== alertId));
-        } catch (err) { console.error("Failed to dismiss alert"); }
-    };
+    ws.onclose = () => setSocket(null);
+    return () => ws.close();
+  }, []);
 
-    const renderDevice = (device) => (
-        <div key={device.itemData.deviceid} className={`device-card ${device.itemData.online ? 'online' : ''}`}>
-            <div className="card-header">
-                <h3>{device.itemData.name}</h3>
-                <span className={`status-dot ${device.itemData.online ? 'online' : ''}`}></span>
+  const toggleRelay = (index, newState) => {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const cmd = {
+        action: "set_relay",
+        relay_index: index,
+        state: newState
+      };
+      socket.send(JSON.stringify(cmd));
+    }
+  };
+
+  if (!systemData) return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-400">
+      <div className="flex flex-col items-center gap-4">
+        <Zap className="animate-bounce text-amber-500" size={48} />
+        <p>Connecting to Smart Gridx...</p>
+      </div>
+    </div>
+  );
+
+  const { pole, house, alerts } = systemData;
+
+  return (
+    <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans text-slate-800">
+      <div className="max-w-7xl mx-auto space-y-6">
+        
+        {/* HEADER */}
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+          <div className="flex items-center gap-4">
+            <div className="bg-gradient-to-br from-amber-500 to-orange-600 p-3 rounded-xl shadow-lg shadow-amber-500/20">
+              <Activity className="text-white" size={28} />
             </div>
-            <div className="sensor-display">
-                <div className="sensor-item">
-                    <TempIcon />
-                    <div className="sensor-value">{device.itemData.params.currentTemperature !== 'unavailable' ? `${device.itemData.params.currentTemperature}°C` : 'N/A'}</div>
-                    <div className="sensor-label">Temperature</div>
-                </div>
-                <div className="sensor-item">
-                    <HumidityIcon />
-                    <div className="sensor-value">{device.itemData.params.currentHumidity !== 'unavailable' ? `${device.itemData.params.currentHumidity}%` : 'N/A'}</div>
-                    <div className="sensor-label">Humidity</div>
-                </div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Smart Gridx</h1>
+              <p className="text-sm text-slate-500 font-medium">IoT Monitoring & Predictive Maintenance</p>
             </div>
-            {device.itemData.params.sensorType === 'errorType' && <p className="sensor-error">Sensor not detected.</p>}
-            <div className="controls-footer">
-                {device.itemData.params?.switch !== undefined && (
-                    <div className="control-item">
-                        <PowerIcon />
-                        <label className="toggle-switch">
-                            <input type="checkbox" checked={device.itemData.params.switch === 'on'} onChange={() => handleToggle(device)} disabled={!device.itemData.online} />
-                            <span className="slider"></span>
-                        </label>
-                    </div>
-                )}
-                <button className="button-secondary" onClick={() => handleOpenModal(device)}>Set Limits</button>
+          </div>
+          <div className="flex gap-4">
+             <div className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 border
+              ${pole.connected ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
+                <Wifi size={16} /> Grid Node: {pole.connected ? 'Online' : 'Offline'}
+             </div>
+             <div className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 border
+              ${house.connected ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
+                <Server size={16} /> SPAN Panel: {house.connected ? 'Online' : 'Offline'}
+             </div>
+          </div>
+        </header>
+
+        {/* ALERTS SECTION (Conditional) */}
+        {alerts.theft_detected && (
+          <div className="bg-red-50 border border-red-200 p-4 rounded-xl flex items-center gap-4 animate-pulse">
+            <div className="bg-red-100 p-2 rounded-full"><AlertTriangle className="text-red-600" /></div>
+            <div>
+              <h3 className="font-bold text-red-700">THEFT DETECTED</h3>
+              <p className="text-sm text-red-600">Power mismatch detected between Pole and House. Inspect line immediately.</p>
             </div>
-        </div>
-    );
-    
-    const renderContent = () => {
-        if (loading) return <p>Loading...</p>;
+          </div>
+        )}
 
-        if (!session.loggedIn) {
-            return (
-                <div className="login-card-wrapper">
-                    <div className="login-card">
-                        <h3>Welcome to the Control Panel</h3>
-                        <p>Please connect your eWeLink account to manage your devices.</p>
-                        <button className="button" onClick={handleLogin}>Login with eWeLink</button>
-                    </div>
-                </div>
-            );
-        }
+        {alerts.maintenance_risk && (
+          <div className="bg-orange-50 border border-orange-200 p-4 rounded-xl flex items-center gap-4">
+            <div className="bg-orange-100 p-2 rounded-full"><Activity className="text-orange-600" /></div>
+            <div>
+              <h3 className="font-bold text-orange-700">PREDICTIVE MAINTENANCE ALERT</h3>
+              <p className="text-sm text-orange-600">Risk Score: {alerts.risk_score}. High probability of failure due to current/temp deviation.</p>
+            </div>
+          </div>
+        )}
 
-        switch (activeLocation) {
-            case 'Head Office':
-                return (
-                    <div className="device-grid">
-                        {devices === null ? <p>Loading devices...</p> : devices.length > 0 ? devices.map(renderDevice) : <p>No devices found for Head Office.</p>}
-                    </div>
-                );
-            case 'Islamabad Office':
-                return <p>No devices configured for Islamabad Office.</p>;
-            case 'BECO':
-                return <p>No devices configured for BECO.</p>;
-            default:
-                return <p>Please select a location.</p>;
-        }
-    };
+        {/* MAIN GRID */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          
+          {/* LEFT COL: POLE / GRID SIDE */}
+          <div className="space-y-6">
+            <div className="flex items-center gap-2 mb-2">
+              <Zap className="text-slate-400" size={20} />
+              <h2 className="text-lg font-bold text-slate-700">Grid Source (Pole)</h2>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <StatCard label="Input Voltage" value={pole.voltage.toFixed(1)} unit="V" icon={Zap} color="text-amber-500 bg-amber-500" />
+              <StatCard label="Grid Power" value={pole.power.toFixed(0)} unit="W" icon={Activity} color="text-amber-500 bg-amber-500" />
+              <StatCard label="Frequency" value={pole.frequency.toFixed(1)} unit="Hz" icon={Activity} color="text-blue-500 bg-blue-500" />
+              <StatCard label="Power Factor" value={pole.pf.toFixed(2)} unit="" icon={ShieldCheck} color="text-emerald-500 bg-emerald-500" />
+            </div>
 
-    // --- CHANGE 2: CSS classes are now smarter, handling logged-out state ---
-    const shellClasses = `app-shell ${session.loggedIn ? (isSidebarOpen ? 'sidebar-open' : 'sidebar-collapsed') : 'logged-out'}`;
+            {/* CHART */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm h-80">
+              <h3 className="text-sm font-bold text-slate-500 uppercase mb-6">Real-time Power Trend</h3>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={trendData}>
+                  <defs>
+                    <linearGradient id="colorGrid" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorHouse" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="time" hide />
+                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} 
+                  />
+                  <Area type="monotone" dataKey="grid" stroke="#f59e0b" fillOpacity={1} fill="url(#colorGrid)" strokeWidth={2} name="Grid Power" />
+                  <Area type="monotone" dataKey="house" stroke="#3b82f6" fillOpacity={1} fill="url(#colorHouse)" strokeWidth={2} name="House Power" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
 
-    return (
-        <div className={shellClasses}>
-            {/* --- CHANGE 3: Sidebar and overlay only render when logged in --- */}
-            {session.loggedIn && (
-                <>
-                    <aside className="app-sidebar">
-                        <div className="sidebar-header"></div>
-                        <nav className="sidebar-nav">
-                            <ul>
-                                <li className={activeLocation === 'Head Office' ? 'active' : ''} onClick={() => handleLocationSelect('Head Office')}>
-                                    <BuildingIcon />
-                                    <span>Head Office</span>
-                                </li>
-                                <li className={activeLocation === 'Islamabad Office' ? 'active' : ''} onClick={() => handleLocationSelect('Islamabad Office')}>
-                                    <BuildingIcon />
-                                    <span>Islamabad Office</span>
-                                </li>
-                                 <li className={activeLocation === 'BECO' ? 'active' : ''} onClick={() => handleLocationSelect('BECO')}>
-                                    <BuildingIcon />
-                                    <span>BECO</span>
-                                </li>
-                            </ul>
-                        </nav>
-                    </aside>
-                    {isSidebarOpen && <div className="sidebar-overlay" onClick={toggleSidebar}></div>}
-                </>
-            )}
-
-            <div className="app-main">
-                <header className="app-header">
-                    {/* --- CHANGE 4: Hamburger menu only shows when logged in --- */}
-                    {session.loggedIn && (
-                        <button className="hamburger-btn" onClick={toggleSidebar}>
-                            <MenuIcon />
-                        </button>
-                    )}
-                    <h1>Temperature & Humidity Control</h1>
-                </header>
-                
-                <main className="main-content">
-                    {error && <div className="error-banner">{error}</div>}
-                    {alerts.length > 0 && (
-                        <div className="alerts-container">
-                            {alerts.map(alert => (
-                                <div key={alert.id} className="alert-banner">
-                                    <AlertIcon />
-                                    <div className="alert-content">{alert.message}</div>
-                                    <button onClick={() => handleDismissAlert(alert.id)} className="dismiss-button">&times;</button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                    {renderContent()}
-                </main>
+          {/* RIGHT COL: HOUSE / SPAN SIDE */}
+          <div className="space-y-6">
+            <div className="flex items-center gap-2 mb-2">
+              <Server className="text-slate-400" size={20} />
+              <h2 className="text-lg font-bold text-slate-700">Smart Home (SPAN Panel)</h2>
             </div>
             
-            {session.loggedIn && !isSidebarOpen && (
-                <div className="location-footer">
-                    <span>Location: {activeLocation}</span>
-                </div>
-            )}
-            
-            {isModalOpen && <LimitsModal device={editingDevice} onSave={handleSaveLimits} onClose={handleCloseModal} />}
-        </div>
-    );
-}
-
-// LimitsModal component remains unchanged
-const LimitsModal = ({ device, onSave, onClose }) => {
-    const [limits, setLimits] = useState({
-        tempHigh: device.itemData.limits?.tempHigh || '',
-        tempLow: device.itemData.limits?.tempLow || '',
-        humidHigh: device.itemData.limits?.humidHigh || '',
-        humidLow: device.itemData.limits?.humidLow || '',
-    });
-
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setLimits(prev => ({ ...prev, [name]: value === '' ? '' : parseFloat(value) }));
-    };
-
-    const handleSave = () => {
-        const finalLimits = Object.entries(limits).reduce((acc, [key, value]) => {
-            if (value !== '') acc[key] = value;
-            return acc;
-        }, {});
-        onSave(finalLimits);
-    };
-
-    return (
-        <div className="modal-backdrop">
-            <div className="modal-content">
-                <h2>Set Limits for {device.itemData.name}</h2>
-                <p className="modal-subtitle">Alerts will be sent to the pre-configured administrator email.</p>
-                <div className="form-grid">
-                    <div className="form-group"><label>Temp {'>'} (°C)</label><input type="number" name="tempHigh" value={limits.tempHigh} onChange={handleChange} placeholder="e.g., 30" /></div>
-                    <div className="form-group"><label>Temp &lt; (°C)</label><input type="number" name="tempLow" value={limits.tempLow} onChange={handleChange} placeholder="e.g., 15" /></div>
-                    <div className="form-group"><label>Humidity {'>'} (%)</label><input type="number" name="humidHigh" value={limits.humidHigh} onChange={handleChange} placeholder="e.g., 80" /></div>
-                    <div className="form-group"><label>Humidity &lt; (%)</label><input type="number" name="humidLow" value={limits.humidLow} onChange={handleChange} placeholder="e.g., 40" /></div>
-                </div>
-                <div className="modal-actions">
-                    <button className="button-secondary" onClick={onClose}>Cancel</button>
-                    <button className="button" onClick={handleSave}>Save Limits</button>
-                </div>
+            {/* HOUSE STATS */}
+            <div className="grid grid-cols-2 gap-4">
+              <StatCard label="Consumption" value={house.power.toFixed(0)} unit="W" icon={Zap} color="text-blue-500 bg-blue-500" />
+              <StatCard label="Current Draw" value={house.current.toFixed(2)} unit="A" icon={Activity} color="text-blue-500 bg-blue-500" />
+              <StatCard label="Temperature" value={house.temperature.toFixed(1)} unit="°C" icon={Thermometer} color={house.temperature > 40 ? "text-red-500 bg-red-500" : "text-emerald-500 bg-emerald-500"} />
+              <StatCard label="Total Energy" value={house.energy.toFixed(2)} unit="kWh" icon={Zap} color="text-purple-500 bg-purple-500" />
             </div>
+
+            {/* RELAY CONTROLS */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <h3 className="text-sm font-bold text-slate-500 uppercase mb-4">Circuit Control (SPAN Relays)</h3>
+              <div className="grid grid-cols-2 gap-4">
+                {house.relays.map((state, idx) => (
+                  <RelayButton 
+                    key={idx} 
+                    index={idx} 
+                    state={state} 
+                    onClick={toggleRelay} 
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* PREDICTIVE MAINTENANCE CARD */}
+            <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-lg relative overflow-hidden">
+               <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white opacity-5 rounded-full blur-2xl"></div>
+               <h3 className="text-sm font-bold text-slate-400 uppercase mb-2">AI Health Monitor</h3>
+               <div className="flex items-end justify-between">
+                 <div>
+                   <p className="text-3xl font-bold">{alerts.risk_score}</p>
+                   <p className="text-xs text-slate-400">Risk Probability (Px)</p>
+                 </div>
+                 <div className="text-right">
+                   <p className={`font-bold ${alerts.maintenance_risk ? 'text-orange-400' : 'text-emerald-400'}`}>
+                     {alerts.maintenance_risk ? 'MAINTENANCE NEEDED' : 'OPTIMAL CONDITION'}
+                   </p>
+                   <p className="text-xs text-slate-500">{systemData.alerts.message}</p>
+                 </div>
+               </div>
+               {/* Health Bar */}
+               <div className="w-full h-2 bg-slate-700 rounded-full mt-4 overflow-hidden">
+                 <div 
+                   className={`h-full transition-all duration-500 ${alerts.maintenance_risk ? 'bg-orange-500' : 'bg-emerald-500'}`}
+                   style={{ width: `${Math.min(alerts.risk_score * 100, 100)}%` }}
+                 />
+               </div>
+            </div>
+
+          </div>
         </div>
-    );
+
+      </div>
+    </div>
+  );
 };
 
 export default App;
