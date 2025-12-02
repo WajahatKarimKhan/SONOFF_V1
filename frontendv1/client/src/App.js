@@ -3,7 +3,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Activity, Zap, AlertTriangle, ShieldCheck, Server, Thermometer, Wifi } from 'lucide-react';
 
 // ================= CONFIGURATION =================
-// UPDATED: Using Secure WebSocket (wss://) for Render
+// SECURE WebSocket URL for Render (wss://)
 const WS_URL = "wss://smartgridxbackend.onrender.com/ws/client"; 
 
 // ================= COMPONENT: GAUGE CARD =================
@@ -97,43 +97,7 @@ const App = () => {
         <Zap className="animate-bounce text-amber-500" size={48} />
         <p>Connecting to Smart Gridx...</p>
       </div>
-    </div>import React, { useState, useEffect } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Activity, Zap, AlertTriangle, ShieldCheck, Server, Thermometer, Wifi } from 'lucide-react';
-
-// ================= CONFIGURATION =================
-// CHANGE THIS TO YOUR RENDER URL WHEN DEPLOYING
-const WS_URL = "ws://localhost:8000/ws/client"; 
-
-// ================= COMPONENT: GAUGE CARD =================
-const StatCard = ({ label, value, unit, icon: Icon, color }) => (
-  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
-    <div>
-      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
-      <div className="flex items-end gap-1 mt-1">
-        <span className="text-2xl font-bold text-slate-800">{value}</span>
-        <span className="text-sm font-medium text-slate-400 mb-1">{unit}</span>
-      </div>
     </div>
-    <div className={`p-3 rounded-full ${color} bg-opacity-10`}>
-      <Icon size={20} className={color.replace('bg-', 'text-')} />
-    </div>
-  </div>
-);
-
-// ================= COMPONENT: RELAY BUTTON =================
-const RelayButton = ({ index, state, onClick }) => (
-  <button
-    onClick={() => onClick(index, !state)}
-    className={`w-full p-4 rounded-xl border transition-all duration-200 flex items-center justify-between group
-      ${state 
-        ? 'bg-amber-500 border-amber-500 shadow-lg shadow-amber-500/30' 
-        : 'bg-white border-slate-200 hover:border-slate-300'}`}
-  >
-    <div className="flex items-center gap-3">
-      <div className={`w-2 h-2 rounded-full ${state ? 'bg-white animate-pulse' : 'bg-slate-300'}`} />
-      <span className={`font-semibold ${state ? 'text-white' : 'text-slate-600'}`}>
-
   );
 
   const { pole, house, alerts } = systemData;
