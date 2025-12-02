@@ -1,6 +1,6 @@
 {
-  "short_name": "THMC",
-  "name": "Temperature & humidity monitoring and control",
+  "short_name": "Smart Grid Portal",
+  "name": "Smart Grid Portal",
   "icons": [
     {
       "src": "favicon.ico",
